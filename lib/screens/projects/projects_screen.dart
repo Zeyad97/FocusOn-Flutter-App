@@ -6,6 +6,7 @@ import '../../models/piece.dart';
 import '../../models/practice_session.dart';
 import '../../services/data_service.dart';
 import '../../providers/practice_session_provider.dart';
+import '../../providers/unified_library_provider.dart';
 import '../practice/active_practice_session_screen.dart';
 import 'widgets/add_project_dialog.dart';
 import 'piece_management_screen.dart';
@@ -25,7 +26,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   @override
   Widget build(BuildContext context) {
     final projects = ref.watch(projectsProvider);
-    final pieces = ref.watch(piecesProvider);
+    final pieces = ref.watch(unifiedLibraryProvider);
     final filteredProjects = _getFilteredProjects(projects);
 
     return Scaffold(
@@ -166,7 +167,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
           description: result['description'] ?? '',
           concertDate: result['concertDate'],
           dailyGoal: result['dailyGoal'] ?? const Duration(minutes: 30),
-          tags: result['tags'] ?? <String>[],
           pieceIds: result['pieceIds'] ?? <String>[],
         );
       }
@@ -178,7 +178,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     required String description,
     DateTime? concertDate,
     Duration? dailyGoal,
-    List<String>? tags,
     List<String>? pieceIds,
   }) async {
     if (title.trim().isEmpty) {
@@ -201,7 +200,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
       dailyPracticeGoal: dailyGoal ?? const Duration(minutes: 30),
       createdAt: now,
       updatedAt: now,
-      metadata: tags != null && tags.isNotEmpty ? {'tags': tags} : null,
     );
 
     try {
@@ -452,23 +450,55 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (isUrgent && project.daysUntilConcert != null)
+                        const SizedBox(height: 4),
+                        if (project.daysUntilConcert != null)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
+                              horizontal: 16,
+                              vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.errorRed.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
+                              color: isUrgent ? AppColors.errorRed : AppColors.primaryPurple,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: isUrgent ? [
+                                BoxShadow(
+                                  color: AppColors.errorRed.withOpacity(0.4),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ] : [
+                                BoxShadow(
+                                  color: AppColors.primaryPurple.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                            child: Text(
-                              project.daysUntilConcert! <= 0 ? 'Due Today!' : '${project.daysUntilConcert} days left',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.errorRed,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  project.daysUntilConcert! <= 0 ? Icons.error : 
+                                  project.daysUntilConcert! <= 7 ? Icons.warning :
+                                  Icons.schedule,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  project.daysUntilConcert! <= 0 
+                                      ? 'DUE TODAY!' 
+                                      : project.daysUntilConcert! == 1
+                                          ? '1 DAY LEFT'
+                                          : '${project.daysUntilConcert} DAYS LEFT',
+                                  style: TextStyle(
+                                    fontSize: isUrgent ? 13 : 12,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                       ],
@@ -502,7 +532,12 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
               // Pieces
               pieces.when(
                 data: (pieceList) {
+                  print('ProjectsScreen: Filtering pieces for project ${project.name}');
+                  print('ProjectsScreen: Project piece IDs: ${project.pieceIds}');
+                  print('ProjectsScreen: Available pieces: ${pieceList.map((p) => '${p.id}:${p.title}').toList()}');
+                  
                   final projectPieces = pieceList.where((p) => project.pieceIds.contains(p.id)).toList();
+                  print('ProjectsScreen: Found ${projectPieces.length} project pieces: ${projectPieces.map((p) => '${p.id}:${p.title}').toList()}');
 
                   if (projectPieces.isEmpty) {
                     return Container(
@@ -596,23 +631,53 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                               ),
                             ),
                           ]
-                        : projectPieces.map((piece) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _getUrgencyColor(project.urgency).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '${piece.title} - ${piece.composer}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _getUrgencyColor(project.urgency),
-                        ),
-                      ),
-                    )).toList(),
+                        : projectPieces.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final piece = entry.value;
+                            
+                            // Use difficulty-based color instead of spot color
+                            Color difficultyColor = _getDifficultyColor(piece.difficulty);
+                            
+                            return Container(
+                              margin: const EdgeInsets.only(right: 4),
+                              child: Tooltip(
+                                message: '${piece.title}\nDifficulty: ${piece.difficulty}/5 (${_getDifficultyLabel(piece.difficulty)})',
+                                child: Stack(
+                                  children: [
+                                    Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
+                                        color: difficultyColor,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 2,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: difficultyColor.withOpacity(0.3),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          '${piece.difficulty}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
                   );
                 },
                 loading: () => const CircularProgressIndicator(),
@@ -939,7 +1004,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                     ),
                   );
                   
-                  // If pieces were updated, refresh the projects list
                   if (result == true) {
                     ref.read(projectsProvider.notifier).refresh();
                   }
@@ -950,28 +1014,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
           return;
         }
 
-        try {
-          // Start a project-focused practice session
-          await ref.read(activePracticeSessionProvider.notifier).startProjectPracticeSession(
-            project.name,
-            SessionType.smart, // Use smart practice by default
-          );
-
-          if (mounted) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const ActivePracticeSessionScreen(),
-              ),
-            );
-          }
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to start practice: $e')),
-            );
-          }
-        }
+        // Show enhanced practice dialog like Lovable
+        _showEnhancedPracticeDialog(project, projectPieces);
       },
       loading: () {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -986,6 +1030,384 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     );
   }
 
+  void _showEnhancedPracticeDialog(Project project, List<Piece> projectPieces) {
+    // Sort pieces by priority (most critical spots first)
+    final sortedPieces = [...projectPieces];
+    sortedPieces.sort((a, b) {
+      final aCritical = a.criticalSpots.length;
+      final bCritical = b.criticalSpots.length;
+      if (aCritical != bCritical) return bCritical.compareTo(aCritical);
+      
+      final aPractice = a.practiceSpots.length;
+      final bPractice = b.practiceSpots.length;
+      return bPractice.compareTo(aPractice);
+    });
+
+    int selectedDuration = 30; // Default 30 minutes
+    bool microbreakEnabled = false;
+    bool interleaveEnabled = true;
+    Piece? selectedPiece;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryPurple.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.play_circle_filled,
+                  color: AppColors.primaryPurple,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Start Practice Session',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      project.name,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // AI Suggestions Section
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.successGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.lightbulb_outline,
+                            color: AppColors.successGreen,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'AI Suggestions',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.successGreen,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (project.concertDate != null && project.daysUntilConcert != null && project.daysUntilConcert! <= 7)
+                        Text(
+                          '🎯 Concert in ${project.daysUntilConcert} days - Focus on performance readiness',
+                          style: const TextStyle(fontSize: 12),
+                        )
+                      else if (sortedPieces.first.criticalSpots.isNotEmpty)
+                        Text(
+                          '🔥 Work on "${sortedPieces.first.title}" - ${sortedPieces.first.criticalSpots.length} critical spots need attention',
+                          style: const TextStyle(fontSize: 12),
+                        )
+                      else
+                        Text(
+                          '✨ Great progress! Focus on maintaining muscle memory',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Piece Selection
+                Text(
+                  'Choose piece to practice:',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                
+                ...sortedPieces.take(3).map((piece) {
+                  final isSelected = selectedPiece?.id == piece.id;
+                  final criticalCount = piece.criticalSpots.length;
+                  final practiceCount = piece.practiceSpots.length;
+                  
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          selectedPiece = piece;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppColors.primaryPurple.withOpacity(0.1) : null,
+                          border: Border.all(
+                            color: isSelected ? AppColors.primaryPurple : AppColors.borderLight,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            // Priority indicator
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: criticalCount > 0 
+                                    ? AppColors.errorRed 
+                                    : practiceCount > 0 
+                                        ? AppColors.warningOrange 
+                                        : AppColors.successGreen,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    piece.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  Text(
+                                    piece.composer,
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (criticalCount > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.errorRed,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '$criticalCount urgent',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              )
+                            else if (practiceCount > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.warningOrange,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '$practiceCount practice',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+
+                const SizedBox(height: 16),
+
+                // Time Selection
+                Row(
+                  children: [
+                    Text(
+                      'Practice time: ',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: [15, 30, 45, 60].map((minutes) {
+                          final isSelected = selectedDuration == minutes;
+                          return Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 2),
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    selectedDuration = minutes;
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? AppColors.primaryPurple : Colors.transparent,
+                                    border: Border.all(
+                                      color: isSelected ? AppColors.primaryPurple : AppColors.borderLight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '${minutes}m',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.white : AppColors.textPrimary,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // Advanced Options
+                Row(
+                  children: [
+                    Expanded(
+                      child: CheckboxListTile(
+                        title: const Text(
+                          'Microbreaks',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        subtitle: const Text(
+                          '2-min breaks every 15 min',
+                          style: TextStyle(fontSize: 10),
+                        ),
+                        value: microbreakEnabled,
+                        onChanged: (value) {
+                          setState(() {
+                            microbreakEnabled = value ?? false;
+                          });
+                        },
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    Expanded(
+                      child: CheckboxListTile(
+                        title: const Text(
+                          'Interleave',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        subtitle: const Text(
+                          'Mix practice spots',
+                          style: TextStyle(fontSize: 10),
+                        ),
+                        value: interleaveEnabled,
+                        onChanged: (value) {
+                          setState(() {
+                            interleaveEnabled = value ?? false;
+                          });
+                        },
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedPiece == null ? null : () {
+                Navigator.of(context).pop();
+                _startActualPractice(project, selectedPiece!, selectedDuration, microbreakEnabled, interleaveEnabled);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryPurple,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Start Practice'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _startActualPractice(Project project, Piece selectedPiece, int duration, bool microbreaks, bool interleave) async {
+    try {
+      await ref.read(activePracticeSessionProvider.notifier).startProjectPracticeSession(
+        project.name,
+        SessionType.smart,
+      );
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const ActivePracticeSessionScreen(),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start practice: $e'),
+            backgroundColor: AppColors.errorRed,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _navigateToPieceManagement(Project project) async {
     final result = await Navigator.push<bool>(
       context,
@@ -997,6 +1419,42 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     // If pieces were updated, refresh the projects list
     if (result == true) {
       ref.read(projectsProvider.notifier).refresh();
+    }
+  }
+
+  /// Get difficulty label text
+  String _getDifficultyLabel(int difficulty) {
+    switch (difficulty) {
+      case 1:
+        return 'Beginner';
+      case 2:
+        return 'Easy';
+      case 3:
+        return 'Intermediate';
+      case 4:
+        return 'Advanced';
+      case 5:
+        return 'Expert';
+      default:
+        return 'Intermediate';
+    }
+  }
+
+  /// Get color based on piece difficulty level (1-5)
+  Color _getDifficultyColor(int difficulty) {
+    switch (difficulty) {
+      case 1:
+        return AppColors.successGreen; // Beginner - Green
+      case 2:
+        return AppColors.lightPurple; // Easy - Light Purple
+      case 3:
+        return AppColors.accentPurple; // Intermediate - Medium Purple  
+      case 4:
+        return AppColors.warningOrange; // Advanced - Orange
+      case 5:
+        return AppColors.errorRed; // Expert - Red
+      default:
+        return AppColors.accentPurple; // Default to intermediate
     }
   }
 }

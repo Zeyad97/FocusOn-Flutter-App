@@ -11,6 +11,9 @@ import '../providers/practice_provider.dart';
 import '../theme/app_theme.dart';
 import 'pdf_viewer_screen.dart';
 import '../models/pdf_document.dart';
+import '../widgets/practice_session_widget.dart';
+import '../widgets/learning_recommendations_widget.dart';
+import '../widgets/layout_typography_demo_widget.dart';
 
 class PracticeDashboardScreen extends ConsumerStatefulWidget {
   const PracticeDashboardScreen({super.key});
@@ -153,6 +156,21 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Practice Session Timer with Micro-breaks
+                            const PracticeSessionWidget(),
+                            
+                            const SizedBox(height: 20),
+                            
+                            // Learning Recommendations based on profile
+                            const LearningRecommendationsWidget(),
+                            
+                            const SizedBox(height: 20),
+                            
+                            // Layout & Typography Demo showing settings in action
+                            const LayoutTypographyDemoWidget(),
+                            
+                            const SizedBox(height: 20),
+                            
                             // Quick Stats Row
                             _buildQuickStatsRow(practiceState),
                             
@@ -179,7 +197,6 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
     final totalSpots = practiceState.stats?.totalSpots ?? 0;
     final dueSpots = practiceState.dailyPlan?.length ?? 0;
     final urgentSpots = practiceState.urgentSpots?.length ?? 0;
-    final practiceStreak = 5; // Placeholder - would come from user data
     
     return Row(
       children: [
@@ -207,15 +224,6 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
             '$urgentSpots',
             Icons.priority_high_outlined,
             AppColors.spotRed,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildStatCard(
-            'Streak',
-            '$practiceStreak',
-            Icons.local_fire_department_outlined,
-            AppColors.successGreen,
           ),
         ),
       ],
@@ -500,26 +508,31 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
   }
 
   Widget _buildSpotTile(Spot spot, {bool isUrgent = false}) {
+    // Use correct priority colors - red for high priority, yellow for medium, green for low
+    Color spotColor = AppColors.successGreen; // Default green for low priority
+    if (spot.priority == SpotPriority.high) {
+      spotColor = AppColors.errorRed;
+    } else if (spot.priority == SpotPriority.medium) {
+      spotColor = AppColors.warningOrange;
+    }
+
     return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
         color: isUrgent 
-            ? Colors.red.shade50 
+            ? AppColors.errorRed.withOpacity(0.05)
             : Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isUrgent 
-              ? Colors.red.shade200 
-              : Theme.of(context).colorScheme.outline.withOpacity(0.2),
-        ),
+        // Removed border rectangles as requested
       ),
       child: ListTile(
         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
-          width: 4,
+          width: 6,
           height: 40,
           decoration: BoxDecoration(
-            color: spot.displayColor,
-            borderRadius: BorderRadius.circular(2),
+            color: spotColor, // Use correct priority color
+            borderRadius: BorderRadius.circular(3),
           ),
         ),
         title: Text(
@@ -584,13 +597,13 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
   Color _getReadinessColor(ReadinessLevel level) {
     switch (level) {
       case ReadinessLevel.newSpot:
-        return Colors.blue;
+        return AppColors.errorRed; // Red for new spots needing practice
       case ReadinessLevel.learning:
-        return Colors.orange;
+        return AppColors.warningOrange; // Orange for learning spots
       case ReadinessLevel.review:
-        return Colors.green;
+        return AppColors.successGreen; // Green for review spots
       case ReadinessLevel.mastered:
-        return Colors.purple;
+        return AppColors.primaryPurple; // Purple for mastered spots
     }
   }
 
@@ -698,7 +711,6 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
               composer: pieceDetails['composer'] ?? 'Unknown Composer',
               keySignature: pieceDetails['keySignature'],
               difficulty: pieceDetails['difficulty'] ?? 3,
-              tags: ['Imported for Practice'],
               pdfFilePath: file.path!,
               spots: [],
               createdAt: now,
@@ -708,9 +720,8 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
             
             print('PracticeDashboard: Saving piece ${piece.id}');
             
-            // Save piece to library
-            final pieceService = ref.read(pieceServiceProvider);
-            await pieceService.savePiece(piece);
+            // Save piece to library via unified provider
+            await ref.read(unifiedLibraryProvider.notifier).addPiece(piece);
             
             // Create initial practice spot (not urgent, just ready to practice)
             final spot = Spot(
@@ -719,13 +730,13 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
               title: 'New Import: ${piece.title}',
               description: 'Ready for practice! Open PDF to create specific practice spots.',
               pageNumber: 1,
-              x: 0.1,
-              y: 0.1, 
-              width: 0.8,
-              height: 0.3,
+              x: 0.2,  // More centered position
+              y: 0.2,  // More centered position 
+              width: 0.6,  // More reasonable width
+              height: 0.2,  // More reasonable height for a practice spot
               priority: SpotPriority.medium, // Medium priority - not urgent
               readinessLevel: ReadinessLevel.newSpot,
-              color: SpotColor.blue, // Blue for new imports
+              color: SpotColor.yellow, // Yellow for new imports (practice needed)
               createdAt: now,
               updatedAt: now,
               nextDue: now, // Available for practice immediately
@@ -744,17 +755,53 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
             print('PracticeDashboard: Import completed, practice dashboard refreshed');
             
             if (mounted) {
+              // Show success message with prominent action button
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('${piece.title} imported and ready for practice! 🎵'),
+                  content: Text('✅ ${piece.title} imported successfully! Tap "Open PDF" to start practicing.'),
                   backgroundColor: Colors.green,
-                  duration: Duration(seconds: 5),
+                  duration: Duration(seconds: 10), // Longer duration
+                  behavior: SnackBarBehavior.floating, // Make it more prominent
                   action: SnackBarAction(
                     label: 'Open PDF',
+                    textColor: Colors.white,
+                    backgroundColor: Colors.green.shade700,
                     onPressed: () => _openPdfViewer(piece),
                   ),
                 ),
               );
+              
+              // Also show a dialog for immediate access
+              Future.delayed(Duration(seconds: 1), () {
+                if (mounted) {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Row(
+                        children: [
+                          Icon(Icons.check_circle, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text('PDF Imported!'),
+                        ],
+                      ),
+                      content: Text('${piece.title} is ready for practice. Would you like to open it now?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text('Later'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _openPdfViewer(piece);
+                          },
+                          child: Text('Open PDF'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              });
             }
           }
         }
@@ -782,7 +829,7 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
             id: piece.id,
             title: piece.title,
             filePath: piece.pdfFilePath,
-            category: piece.tags.isNotEmpty ? piece.tags.first : 'Music',
+            category: 'Music',
             isFavorite: false,
             lastOpened: DateTime.now(),
           ),
@@ -800,66 +847,72 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
 
     return showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Piece Details'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleController,
-                decoration: InputDecoration(
-                  labelText: 'Title',
-                  hintText: 'Enter piece title',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text('Piece Details'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: InputDecoration(
+                    labelText: 'Title',
+                    hintText: 'Enter piece title',
+                  ),
                 ),
-              ),
-              SizedBox(height: 16),
-              TextField(
-                controller: composerController,
-                decoration: InputDecoration(
-                  labelText: 'Composer',
-                  hintText: 'Enter composer name',
+                SizedBox(height: 16),
+                TextField(
+                  controller: composerController,
+                  decoration: InputDecoration(
+                    labelText: 'Composer',
+                    hintText: 'Enter composer name',
+                  ),
                 ),
-              ),
-              SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: selectedKeySignature,
-                decoration: InputDecoration(labelText: 'Key Signature'),
-                items: ['C Major', 'G Major', 'D Major', 'A Major', 'E Major', 'B Major', 'F# Major',
-                       'A minor', 'E minor', 'B minor', 'F# minor', 'C# minor', 'G# minor', 'D# minor']
-                    .map((key) => DropdownMenuItem(value: key, child: Text(key)))
-                    .toList(),
-                onChanged: (value) => selectedKeySignature = value,
-              ),
-              SizedBox(height: 16),
-              Text('Difficulty: $selectedDifficulty'),
-              Slider(
-                value: selectedDifficulty.toDouble(),
-                min: 1,
-                max: 10,
-                divisions: 9,
-                onChanged: (value) => selectedDifficulty = value.round(),
-              ),
-            ],
+                SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedKeySignature,
+                  decoration: InputDecoration(labelText: 'Key Signature'),
+                  items: ['C Major', 'G Major', 'D Major', 'A Major', 'E Major', 'B Major', 'F# Major',
+                         'A minor', 'E minor', 'B minor', 'F# minor', 'C# minor', 'G# minor', 'D# minor']
+                      .map((key) => DropdownMenuItem(value: key, child: Text(key)))
+                      .toList(),
+                  onChanged: (value) => selectedKeySignature = value,
+                ),
+                SizedBox(height: 16),
+                Text('Difficulty: $selectedDifficulty'),
+                Slider(
+                  value: selectedDifficulty.toDouble(),
+                  min: 1,
+                  max: 10,
+                  divisions: 9,
+                  onChanged: (value) {
+                    setState(() {
+                      selectedDifficulty = value.round();
+                    });
+                  },
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context, {
+                  'title': titleController.text.trim().isEmpty ? null : titleController.text.trim(),
+                  'composer': composerController.text.trim().isEmpty ? null : composerController.text.trim(),
+                  'keySignature': selectedKeySignature,
+                  'difficulty': selectedDifficulty,
+                });
+              },
+              child: Text('Import'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context, {
-                'title': titleController.text.trim().isEmpty ? null : titleController.text.trim(),
-                'composer': composerController.text.trim().isEmpty ? null : composerController.text.trim(),
-                'keySignature': selectedKeySignature,
-                'difficulty': selectedDifficulty,
-              });
-            },
-            child: Text('Import'),
-          ),
-        ],
       ),
     );
   }

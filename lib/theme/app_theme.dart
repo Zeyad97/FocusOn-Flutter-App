@@ -16,6 +16,7 @@ class AppColors {
   static const lightPurple = Color(0xFFC084FC);   // Light purple
   static const accentWarm = Color(0xFFF59E0B);
   static const backgroundDark = Color(0xFF0F0B1F);
+  static const backgroundSecondary = Color(0xFFF8F9FA);
   static const surfaceDark = Color(0xFF1E1B31);
   static const surface = Color(0xFFFAF9FC);
   static const surfaceColor = Color(0xFFFAF9FC);

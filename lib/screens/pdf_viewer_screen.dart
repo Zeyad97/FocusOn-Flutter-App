@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -97,6 +98,8 @@ class _PDFViewerScreenState extends ConsumerState<PDFViewerScreen> {
         onPanUpdate: _isCreatingSpot ? _onPanUpdate : null,
         onPanEnd: _isCreatingSpot ? _onPanEnd : null,
         onTapUp: !_isCreatingSpot ? _onTap : null,
+        // Prevent gesture conflicts with PDF scrolling
+        behavior: HitTestBehavior.deferToChild,
         child: Stack(
           children: [
             // PDF Display
@@ -155,6 +158,20 @@ class _PDFViewerScreenState extends ConsumerState<PDFViewerScreen> {
                 ),
               ),
               
+            // Help button for spots
+            if (!_isFullScreen && _spots.isNotEmpty)
+              Positioned(
+                bottom: 80,
+                right: 16,
+                child: FloatingActionButton(
+                  heroTag: "spot_help_fab",
+                  mini: true,
+                  onPressed: _showSpotHelp,
+                  backgroundColor: Colors.blue,
+                  child: const Icon(Icons.help_outline),
+                ),
+              ),
+              
             // Instructions overlay
             if (_isCreatingSpot)
               Positioned(
@@ -183,6 +200,8 @@ class _PDFViewerScreenState extends ConsumerState<PDFViewerScreen> {
     final screenWidth = screenSize.width;
     final screenHeight = screenSize.height - (_isFullScreen ? 0 : 100); // Account for app bar
     
+    final isSmallSpot = (spot.width * screenWidth) < 100 || (spot.height * screenHeight) < 40;
+    
     return Positioned(
       left: spot.x * screenWidth,
       top: (_isFullScreen ? 0 : 100) + (spot.y * screenHeight),
@@ -192,34 +211,157 @@ class _PDFViewerScreenState extends ConsumerState<PDFViewerScreen> {
         onTap: () => _onSpotTap(spot),
         child: Container(
           decoration: BoxDecoration(
-            color: spot.displayColor.withOpacity(0.3),
+            color: spot.displayColor.withOpacity(0.15),
             border: Border.all(
               color: spot.displayColor,
-              width: 2,
+              width: 2.5,
             ),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Center(
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: spot.displayColor,
-                borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(6),
+            boxShadow: [
+              BoxShadow(
+                color: spot.displayColor.withOpacity(0.3),
+                blurRadius: 6,
+                spreadRadius: 1,
+                offset: const Offset(0, 2),
               ),
+            ],
+          ),
+          child: isSmallSpot ? _buildCompactSpotContent(spot) : _buildDetailedSpotContent(spot),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactSpotContent(Spot spot) {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: spot.displayColor,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _getSpotPriorityIcon(spot.priority),
+              color: Colors.white,
+              size: 12,
+            ),
+            const SizedBox(width: 4),
+            Flexible(
               child: Text(
-                spot.title,
-                style: TextStyle(
+                spot.title.isEmpty ? 'Spot' : spot.title,
+                style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 12,
+                  fontSize: 10,
                   fontWeight: FontWeight.bold,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
+  }
+
+  Widget _buildDetailedSpotContent(Spot spot) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row with priority and title
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: spot.displayColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Icon(
+                  _getSpotPriorityIcon(spot.priority),
+                  color: Colors.white,
+                  size: 14,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  spot.title.isEmpty ? 'Practice Spot' : spot.title,
+                  style: TextStyle(
+                    color: spot.displayColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 4),
+          
+          // Status info
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: spot.displayColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _getReadinessDisplayName(spot.readinessLevel),
+                  style: TextStyle(
+                    color: spot.displayColor,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (spot.practiceCount > 0)
+                Text(
+                  '${spot.practiceCount}x',
+                  style: TextStyle(
+                    color: spot.displayColor.withOpacity(0.8),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getSpotPriorityIcon(SpotPriority priority) {
+    switch (priority) {
+      case SpotPriority.low:
+        return Icons.circle;
+      case SpotPriority.medium:
+        return Icons.warning_amber;
+      case SpotPriority.high:
+        return Icons.priority_high;
+    }
+  }
+
+  String _getReadinessDisplayName(ReadinessLevel level) {
+    switch (level) {
+      case ReadinessLevel.newSpot:
+        return 'New';
+      case ReadinessLevel.learning:
+        return 'Learning';
+      case ReadinessLevel.review:
+        return 'Review';
+      case ReadinessLevel.mastered:
+        return 'Mastered';
+    }
   }
   
   Widget _buildSelectionRectangle() {
@@ -300,6 +442,139 @@ class _PDFViewerScreenState extends ConsumerState<PDFViewerScreen> {
   void _onSpotTap(Spot spot) {
     _showSpotPracticeDialog(spot);
   }
+
+  void _showSpotHelp() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.lightbulb_outline, color: Colors.blue),
+            const SizedBox(width: 8),
+            const Text('How to Use Practice Spots'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHelpItem(
+                Icons.touch_app,
+                'Tap any spot',
+                'Open the practice dialog with timer and note-taking features',
+                Colors.blue,
+              ),
+              const SizedBox(height: 12),
+              _buildHelpItem(
+                Icons.timer,
+                'Use the practice timer',
+                'Track how long you spend on each section',
+                Colors.green,
+              ),
+              const SizedBox(height: 12),
+              _buildHelpItem(
+                Icons.star_rate,
+                'Rate your practice',
+                'Choose Failed, Struggled, Good, or Excellent to track progress',
+                Colors.orange,
+              ),
+              const SizedBox(height: 12),
+              _buildHelpItem(
+                Icons.analytics,
+                'Track your progress',
+                'See practice count and success rate for each spot',
+                Colors.purple,
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Spot Colors:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildColorInfo(Colors.red, 'Red: New/Critical spots'),
+                    _buildColorInfo(Colors.orange, 'Orange: Learning'),
+                    _buildColorInfo(Colors.yellow, 'Yellow: Review needed'),
+                    _buildColorInfo(Colors.green, 'Green: Mastered'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it!'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHelpItem(IconData icon, String title, String description, Color color) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                description,
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildColorInfo(Color color, String description) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            description,
+            style: const TextStyle(fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
   
   Future<void> _createSpot() async {
     if (_selectionStart == null || _selectionEnd == null) return;
@@ -328,6 +603,21 @@ class _PDFViewerScreenState extends ConsumerState<PDFViewerScreen> {
     
     if (result != null) {
       final now = DateTime.now();
+      
+      // Assign color based on priority
+      SpotColor spotColor;
+      switch (result['priority'] as SpotPriority) {
+        case SpotPriority.high:
+          spotColor = SpotColor.red;
+          break;
+        case SpotPriority.medium:
+          spotColor = SpotColor.yellow;
+          break;
+        case SpotPriority.low:
+          spotColor = SpotColor.green;
+          break;
+      }
+      
       final spot = Spot(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         pieceId: widget.document.id,
@@ -340,7 +630,7 @@ class _PDFViewerScreenState extends ConsumerState<PDFViewerScreen> {
         height: height,
         priority: result['priority'],
         readinessLevel: ReadinessLevel.newSpot,
-        color: _selectedColor,
+        color: spotColor,
         createdAt: now,
         updatedAt: now,
         // Ensure new spots appear in practice dashboard immediately
@@ -821,7 +1111,7 @@ class _SpotEditDialogState extends State<_SpotEditDialog> {
   }
 }
 
-class SpotPracticeDialog extends StatelessWidget {
+class SpotPracticeDialog extends StatefulWidget {
   final Spot spot;
   final Function(SpotResult) onPracticeComplete;
   final VoidCallback onEditSpot;
@@ -836,11 +1126,111 @@ class SpotPracticeDialog extends StatelessWidget {
   });
 
   @override
+  State<SpotPracticeDialog> createState() => _SpotPracticeDialogState();
+}
+
+class _SpotPracticeDialogState extends State<SpotPracticeDialog> {
+  int _practiceTime = 0;
+  Timer? _timer;
+  bool _isRunning = false;
+  String _notes = '';
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _toggleTimer() {
+    if (_isRunning) {
+      _timer?.cancel();
+    } else {
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() {
+          _practiceTime++;
+        });
+      });
+    }
+    setState(() {
+      _isRunning = !_isRunning;
+    });
+  }
+
+  void _resetTimer() {
+    _timer?.cancel();
+    setState(() {
+      _practiceTime = 0;
+      _isRunning = false;
+    });
+  }
+
+  String _formatTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  Color _getPriorityColor() {
+    switch (widget.spot.priority) {
+      case SpotPriority.low:
+        return Colors.green;
+      case SpotPriority.medium:
+        return Colors.orange;
+      case SpotPriority.high:
+        return Colors.red;
+    }
+  }
+
+  IconData _getPriorityIcon() {
+    switch (widget.spot.priority) {
+      case SpotPriority.low:
+        return Icons.circle;
+      case SpotPriority.medium:
+        return Icons.warning_amber;
+      case SpotPriority.high:
+        return Icons.priority_high;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final priorityColor = _getPriorityColor();
+    
     return AlertDialog(
       title: Row(
         children: [
-          Expanded(child: Text('Practice: ${spot.title}')),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: priorityColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              _getPriorityIcon(),
+              color: priorityColor,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.spot.title,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  'Page ${widget.spot.pageNumber}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
           PopupMenuButton(
             itemBuilder: (context) => [
               PopupMenuItem(
@@ -849,7 +1239,7 @@ class SpotPracticeDialog extends StatelessWidget {
                   children: [
                     Icon(Icons.edit, size: 18),
                     SizedBox(width: 8),
-                    Text('Edit'),
+                    Text('Edit Spot'),
                   ],
                 ),
               ),
@@ -859,7 +1249,7 @@ class SpotPracticeDialog extends StatelessWidget {
                   children: [
                     Icon(Icons.delete, size: 18, color: Colors.red),
                     SizedBox(width: 8),
-                    Text('Delete', style: TextStyle(color: Colors.red)),
+                    Text('Delete Spot', style: TextStyle(color: Colors.red)),
                   ],
                 ),
               ),
@@ -867,63 +1257,252 @@ class SpotPracticeDialog extends StatelessWidget {
             onSelected: (value) {
               Navigator.pop(context);
               if (value == 'edit') {
-                onEditSpot();
+                widget.onEditSpot();
               } else if (value == 'delete') {
-                onDeleteSpot();
+                widget.onDeleteSpot();
               }
             },
           ),
         ],
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (spot.description != null && spot.description!.isNotEmpty) ...[
-            Text(spot.description!),
-            SizedBox(height: 12),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Spot Info Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.spot.description != null && widget.spot.description!.isNotEmpty) ...[
+                    Text(
+                      'Description:',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                    Text(widget.spot.description!),
+                    SizedBox(height: 8),
+                  ],
+                  Row(
+                    children: [
+                      _buildInfoChip(
+                        'Priority',
+                        widget.spot.priority.displayName,
+                        priorityColor,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildInfoChip(
+                        'Level',
+                        widget.spot.readinessLevel.displayName,
+                        Colors.blue,
+                      ),
+                    ],
+                  ),
+                  if (widget.spot.practiceCount > 0) ...[
+                    SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _buildInfoChip(
+                          'Practice Count',
+                          '${widget.spot.practiceCount}x',
+                          Colors.purple,
+                        ),
+                        const SizedBox(width: 8),
+                        _buildInfoChip(
+                          'Success Rate',
+                          '${((widget.spot.successCount / widget.spot.practiceCount) * 100).toStringAsFixed(0)}%',
+                          Colors.green,
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Practice Timer
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Practice Timer',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _formatTime(_practiceTime),
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: _isRunning ? Colors.green : Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _toggleTimer,
+                        icon: Icon(_isRunning ? Icons.pause : Icons.play_arrow),
+                        label: Text(_isRunning ? 'Pause' : 'Start'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isRunning ? Colors.orange : Colors.green,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _resetTimer,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reset'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Practice Notes
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'Practice Notes (Optional)',
+                hintText: 'How did it feel? Any observations...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                prefixIcon: Icon(Icons.note_outlined),
+              ),
+              maxLines: 2,
+              onChanged: (value) => _notes = value,
+            ),
+
+            const SizedBox(height: 20),
+
+            Text(
+              'How did the practice go?',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 12),
           ],
-          Text('Priority: ${spot.priority.displayName}'),
-          Text('Level: ${spot.readinessLevel.displayName}'),
-          if (spot.practiceCount > 0) ...[
-            SizedBox(height: 8),
-            Text('Practiced: ${spot.practiceCount} times'),
-            Text('Success rate: ${((spot.successCount / spot.practiceCount) * 100).toStringAsFixed(1)}%'),
-          ],
-          SizedBox(height: 20),
-          Text('How did the practice go?', style: TextStyle(fontWeight: FontWeight.bold)),
-        ],
+        ),
       ),
       actions: [
+        // Cancel button
         TextButton(
-          onPressed: () {
-            onPracticeComplete(SpotResult.failed);
-            Navigator.pop(context);
-          },
-          child: Text('Failed', style: TextStyle(color: Colors.red)),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
         ),
-        TextButton(
-          onPressed: () {
-            onPracticeComplete(SpotResult.struggled);
-            Navigator.pop(context);
-          },
-          child: Text('Struggled', style: TextStyle(color: Colors.orange)),
-        ),
-        TextButton(
-          onPressed: () {
-            onPracticeComplete(SpotResult.good);
-            Navigator.pop(context);
-          },
-          child: Text('Good', style: TextStyle(color: Colors.blue)),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            onPracticeComplete(SpotResult.excellent);
-            Navigator.pop(context);
-          },
-          child: Text('Excellent'),
+        
+        // Practice result buttons
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildResultButton(
+              'Failed',
+              Icons.sentiment_very_dissatisfied,
+              Colors.red,
+              SpotResult.failed,
+            ),
+            const SizedBox(width: 4),
+            _buildResultButton(
+              'Struggled',
+              Icons.sentiment_dissatisfied,
+              Colors.orange,
+              SpotResult.struggled,
+            ),
+            const SizedBox(width: 4),
+            _buildResultButton(
+              'Good',
+              Icons.sentiment_satisfied,
+              Colors.blue,
+              SpotResult.good,
+            ),
+            const SizedBox(width: 4),
+            _buildResultButton(
+              'Excellent',
+              Icons.sentiment_very_satisfied,
+              Colors.green,
+              SpotResult.excellent,
+            ),
+          ],
         ),
       ],
+    );
+  }
+
+  Widget _buildInfoChip(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultButton(String text, IconData icon, Color color, SpotResult result) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: ElevatedButton(
+          onPressed: () {
+            _timer?.cancel();
+            widget.onPracticeComplete(result);
+            Navigator.pop(context);
+            
+            // Show feedback
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    Icon(icon, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text('Practice marked as $text!'),
+                  ],
+                ),
+                backgroundColor: color,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: color,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16),
+              const SizedBox(height: 2),
+              Text(
+                text,
+                style: const TextStyle(fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

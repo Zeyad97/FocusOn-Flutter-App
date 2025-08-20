@@ -749,17 +749,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                   ),
                   // Play button overlay
                   Center(
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.9),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow,
-                        color: AppColors.primaryPurple,
-                        size: 28,
+                    child: GestureDetector(
+                      onTap: () {
+                        FeedbackSystem.medium();
+                        _openPiece(piece);
+                      },
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow,
+                          color: AppColors.primaryPurple,
+                          size: 28,
+                        ),
                       ),
                     ),
                   ),

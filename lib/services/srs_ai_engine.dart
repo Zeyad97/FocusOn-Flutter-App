@@ -2,38 +2,44 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/spot.dart';
 import '../services/spot_service.dart';
 
+/// Result of SRS calculation
+class SrsUpdateResult {
+  final double easeFactor;
+  final int interval;
+  final int repetitions;
+  final bool successful;
+
+  SrsUpdateResult({
+    required this.easeFactor,
+    required this.interval,
+    required this.repetitions,
+    required this.successful,
+  });
+}
+
 class SrsAiEngine {
   final SpotService _spotService;
   
   SrsAiEngine(this._spotService);
   
-  /// Update spot after practice session using SRS algorithm
+  /// Update spot after practice session using advanced SRS algorithm
   Future<Spot> updateSpotAfterPractice(Spot spot, SpotResult result) async {
     final now = DateTime.now();
-    final practiceTime = spot.recommendedPracticeTime;
     
-    // Save practice history
-    final history = SpotHistory(
-      id: now.millisecondsSinceEpoch.toString(),
-      spotId: spot.id,
-      timestamp: now,
-      result: result,
-      practiceTimeMinutes: practiceTime,
-    );
-    await _spotService.saveSpotHistory(history);
+    // Calculate new SRS parameters with improved algorithm
+    final srsResult = _calculateAdvancedSrsUpdate(spot, result);
     
-    // Calculate new SRS parameters
-    final srsResult = _calculateSrsUpdate(spot, result);
+    // AI-driven readiness level calculation
+    final newReadinessLevel = _calculateAiReadinessLevel(spot, result, srsResult);
     
-    // Update readiness level based on progress
-    final newReadinessLevel = _calculateReadinessLevel(
-      spot.readinessLevel,
-      result,
-      spot.repetitions + (srsResult.successful ? 1 : 0),
-    );
+    // AI-driven priority calculation
+    final newPriority = _calculateAiPriority(spot, result, srsResult);
     
-    // Calculate next due date
-    final nextDue = now.add(Duration(days: srsResult.interval));
+    // AI-driven color update
+    final newColor = _calculateAiColor(spot, result, newReadinessLevel, newPriority);
+    
+    // Calculate next due date with smart intervals
+    final nextDue = _calculateSmartDueDate(now, srsResult, result);
     
     return spot.copyWith(
       updatedAt: now,
@@ -46,7 +52,162 @@ class SrsAiEngine {
       interval: srsResult.interval,
       repetitions: srsResult.repetitions,
       readinessLevel: newReadinessLevel,
+      priority: newPriority,
+      color: newColor,
+      lastResult: result,
+      lastResultAt: now,
     );
+  }
+
+  /// Advanced SRS calculation with AI improvements
+  SrsUpdateResult _calculateAdvancedSrsUpdate(Spot spot, SpotResult result) {
+    final currentEase = spot.easeFactor;
+    final currentInterval = spot.interval;
+    final currentReps = spot.repetitions;
+    
+    // Enhanced quality assessment
+    double quality = _getQualityScore(result);
+    
+    // Adjust quality based on recent performance
+    if (spot.practiceCount > 0) {
+      final successRate = spot.successCount / spot.practiceCount;
+      if (successRate < 0.3) quality *= 0.8; // Penalty for consistent struggles
+      if (successRate > 0.8) quality *= 1.1; // Bonus for consistent success
+    }
+    
+    // Calculate new ease factor with improvements
+    double newEase = currentEase + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+    newEase = newEase.clamp(1.3, 2.5);
+    
+    int newInterval;
+    int newReps;
+    bool successful = quality >= 3.0;
+    
+    if (successful) {
+      if (currentReps == 0) {
+        newInterval = 1;
+      } else if (currentReps == 1) {
+        newInterval = 6;
+      } else {
+        newInterval = (currentInterval * newEase).round();
+      }
+      newReps = currentReps + 1;
+    } else {
+      newInterval = 1;
+      newReps = 0;
+      newEase = (newEase - 0.2).clamp(1.3, 2.5);
+    }
+    
+    return SrsUpdateResult(
+      easeFactor: newEase,
+      interval: newInterval,
+      repetitions: newReps,
+      successful: successful,
+    );
+  }
+
+  /// AI-driven readiness level calculation
+  ReadinessLevel _calculateAiReadinessLevel(Spot spot, SpotResult result, SrsUpdateResult srs) {
+    // Consider multiple factors
+    final successRate = spot.practiceCount > 0 ? spot.successCount / spot.practiceCount : 0.0;
+    final repetitions = srs.repetitions;
+    final recentResult = result;
+    
+    // Failed practice resets to learning
+    if (result == SpotResult.failed) {
+      return ReadinessLevel.learning;
+    }
+    
+    // Advanced based on success rate and repetitions
+    if (successRate >= 0.9 && repetitions >= 5) {
+      return ReadinessLevel.mastered;
+    } else if (successRate >= 0.7 && repetitions >= 3) {
+      return ReadinessLevel.review;
+    } else if (spot.practiceCount > 0) {
+      return ReadinessLevel.learning;
+    } else {
+      return ReadinessLevel.newSpot;
+    }
+  }
+
+  /// AI-driven priority calculation
+  SpotPriority _calculateAiPriority(Spot spot, SpotResult result, SrsUpdateResult srs) {
+    final now = DateTime.now();
+    final isOverdue = spot.nextDue != null && now.isAfter(spot.nextDue!);
+    final successRate = spot.practiceCount > 0 ? spot.successCount / spot.practiceCount : 0.0;
+    
+    // High priority conditions
+    if (result == SpotResult.failed || 
+        isOverdue || 
+        (spot.practiceCount > 3 && successRate < 0.4)) {
+      return SpotPriority.high;
+    }
+    
+    // Medium priority conditions
+    if (result == SpotResult.struggled || 
+        (spot.practiceCount > 0 && successRate < 0.7) ||
+        srs.repetitions < 3) {
+      return SpotPriority.medium;
+    }
+    
+    // Low priority for well-learned spots
+    return SpotPriority.low;
+  }
+
+  /// AI-driven color calculation
+  SpotColor _calculateAiColor(Spot spot, SpotResult result, ReadinessLevel readiness, SpotPriority priority) {
+    // Immediate color based on result
+    if (result == SpotResult.failed || priority == SpotPriority.high) {
+      return SpotColor.red; // Critical/urgent
+    }
+    
+    if (result == SpotResult.struggled || readiness == ReadinessLevel.learning) {
+      return SpotColor.yellow; // Needs practice
+    }
+    
+    if (readiness == ReadinessLevel.mastered && priority == SpotPriority.low) {
+      return SpotColor.green; // Well learned
+    }
+    
+    // Default to yellow for active practice
+    return SpotColor.yellow;
+  }
+
+  /// Smart due date calculation
+  DateTime _calculateSmartDueDate(DateTime now, SrsUpdateResult srs, SpotResult result) {
+    int days = srs.interval;
+    
+    // Adjust based on result quality
+    switch (result) {
+      case SpotResult.failed:
+        days = 0; // Practice again immediately
+        break;
+      case SpotResult.struggled:
+        days = (days * 0.5).round().clamp(1, 3); // Shorter interval
+        break;
+      case SpotResult.good:
+        // Use calculated interval
+        break;
+      case SpotResult.excellent:
+        days = (days * 1.2).round(); // Longer interval
+        break;
+    }
+    
+    return now.add(Duration(days: days));
+  }
+
+  /// Enhanced quality score mapping
+  double _getQualityScore(SpotResult result) {
+    switch (result) {
+      case SpotResult.failed:
+        return 1.0; // Complete failure
+      case SpotResult.struggled:
+        return 2.5; // Difficult recall
+      case SpotResult.good:
+        return 4.0; // Good recall
+      case SpotResult.excellent:
+        return 5.0; // Perfect recall
+    }
   }
   
   /// Generate daily practice plan based on due spots and AI priority

@@ -3,6 +3,7 @@ import '../../../theme/app_theme.dart';
 import '../../../models/piece.dart';
 import '../../../models/spot.dart';
 import '../library_screen.dart';
+import 'piece_settings_dialog.dart';
 
 /// Card component for displaying a piece in grid or list view
 class PieceCard extends StatelessWidget {
@@ -68,7 +69,24 @@ class PieceCard extends StatelessWidget {
                       size: 16,
                       color: _getConcertUrgencyColor(),
                     ),
+                    const SizedBox(width: 4),
                   ],
+                  // Settings button
+                  GestureDetector(
+                    onTap: () => _showPieceSettings(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppColors.textSecondary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(
+                        Icons.settings,
+                        size: 16,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               
@@ -221,7 +239,24 @@ class PieceCard extends StatelessWidget {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+                          const SizedBox(width: 8),
                         ],
+                        // Settings button
+                        GestureDetector(
+                          onTap: () => _showPieceSettings(context),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: AppColors.textSecondary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Icon(
+                              Icons.settings,
+                              size: 18,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                     
@@ -368,5 +403,19 @@ class PieceCard extends StatelessWidget {
     } else {
       return 'Just now';
     }
+  }
+
+  void _showPieceSettings(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => PieceSettingsDialog(piece: piece),
+    ).then((result) {
+      // If settings were updated, the dialog will return true
+      // The parent widget can listen for state changes through providers
+      if (result == true) {
+        // Settings were saved, no additional action needed
+        // as the provider will notify listeners automatically
+      }
+    });
   }
 }

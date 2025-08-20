@@ -312,15 +312,12 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                     onPanStart: _isAnnotationMode ? _onAnnotationPanStart : null,
                     onPanUpdate: _isAnnotationMode ? _onAnnotationPanUpdate : null,
                     onPanEnd: _isAnnotationMode ? _onAnnotationPanEnd : null,
+                    // Prevent gesture conflicts with PDF scrolling
+                    behavior: HitTestBehavior.deferToChild,
                     child: Container(
                       decoration: _isSpotMode ? BoxDecoration(
                         border: Border.all(
                           color: AppColors.errorRed.withOpacity(0.5),
-                          width: 3,
-                        ),
-                      ) : _isAnnotationMode ? BoxDecoration(
-                        border: Border.all(
-                          color: AppColors.primaryBlue.withOpacity(0.5),
                           width: 3,
                         ),
                       ) : null,

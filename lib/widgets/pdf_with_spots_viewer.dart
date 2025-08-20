@@ -101,6 +101,8 @@ class _PdfWithSpotsViewerState extends ConsumerState<PdfWithSpotsViewer> {
               onPanStart: _onPanStart,
               onPanUpdate: _onPanUpdate,
               onPanEnd: _onPanEnd,
+              // Prevent conflicts with PDF scrolling
+              behavior: HitTestBehavior.opaque,
               child: Container(
                 width: double.infinity,
                 height: double.infinity,
@@ -503,6 +505,8 @@ class SpotOverlay extends StatelessWidget {
           child: GestureDetector(
             onTap: () => onSpotTap(spot),
             onLongPress: () => onSpotLongPress(spot),
+            // Prevent spot from interfering with scrolling
+            behavior: HitTestBehavior.opaque,
             child: Container(
               width: width,
               height: height,

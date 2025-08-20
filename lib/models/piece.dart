@@ -2,14 +2,15 @@ import 'dart:io';
 import 'package:collection/collection.dart';
 import 'spot.dart';
 
-/// Core data model representing a musical piece/sheet music - ScoreRead Pro
+/// Core data model representing a musical piece/sheet music
 class Piece {
   final String id;
   final String title;
   final String composer;
   final String? keySignature;
   final int difficulty; // 1-5 stars
-  final List<String> tags; // Tags for categorization
+  final String? genre;
+  final int? duration; // in minutes
   final DateTime? concertDate;
   final DateTime? lastOpened;
   final int? lastViewedPage;
@@ -26,14 +27,15 @@ class Piece {
   final int totalPages; // PDF page count
   final double? targetTempo; // Optional tempo target for readiness
   final double? currentTempo; // Current achieved tempo
-
-  const Piece({
+  
+  Piece({
     required this.id,
     required this.title,
     required this.composer,
     this.keySignature,
     required this.difficulty,
-    this.tags = const [],
+    this.genre,
+    this.duration,
     this.concertDate,
     this.lastOpened,
     this.lastViewedPage,
@@ -143,14 +145,23 @@ class Piece {
     String? composer,
     String? keySignature,
     int? difficulty,
+    String? genre,
+    int? duration,
     DateTime? concertDate,
     DateTime? lastOpened,
     int? lastViewedPage,
+    double? lastZoom,
+    String? viewMode,
     String? pdfFilePath,
     List<Spot>? spots,
     DateTime? updatedAt,
     String? projectId,
     Map<String, dynamic>? metadata,
+    Duration? totalTimeSpent,
+    String? thumbnailPath,
+    int? totalPages,
+    double? targetTempo,
+    double? currentTempo,
   }) {
     return Piece(
       id: id,
@@ -158,15 +169,24 @@ class Piece {
       composer: composer ?? this.composer,
       keySignature: keySignature ?? this.keySignature,
       difficulty: difficulty ?? this.difficulty,
+      genre: genre ?? this.genre,
+      duration: duration ?? this.duration,
       concertDate: concertDate ?? this.concertDate,
       lastOpened: lastOpened ?? this.lastOpened,
       lastViewedPage: lastViewedPage ?? this.lastViewedPage,
+      lastZoom: lastZoom ?? this.lastZoom,
+      viewMode: viewMode ?? this.viewMode,
       pdfFilePath: pdfFilePath ?? this.pdfFilePath,
       spots: spots ?? this.spots,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
       projectId: projectId ?? this.projectId,
       metadata: metadata ?? this.metadata,
+      totalTimeSpent: totalTimeSpent ?? this.totalTimeSpent,
+      thumbnailPath: thumbnailPath ?? this.thumbnailPath,
+      totalPages: totalPages ?? this.totalPages,
+      targetTempo: targetTempo ?? this.targetTempo,
+      currentTempo: currentTempo ?? this.currentTempo,
     );
   }
 
@@ -178,6 +198,8 @@ class Piece {
       'composer': composer,
       'key_signature': keySignature,
       'difficulty': difficulty,
+      'genre': genre,
+      'duration': duration,
       'concert_date': concertDate?.millisecondsSinceEpoch,
       'last_opened': lastOpened?.millisecondsSinceEpoch,
       'pdf_file_path': pdfFilePath,
@@ -196,6 +218,8 @@ class Piece {
       composer: json['composer'],
       keySignature: json['key_signature'],
       difficulty: json['difficulty'],
+      genre: json['genre'],
+      duration: json['duration'],
       concertDate: json['concert_date'] != null 
           ? DateTime.fromMillisecondsSinceEpoch(json['concert_date'])
           : null,
@@ -207,7 +231,7 @@ class Piece {
       createdAt: DateTime.fromMillisecondsSinceEpoch(json['created_at']),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(json['updated_at']),
       projectId: json['project_id'],
-      metadata: json['metadata']?.cast<String, dynamic>(),
+      metadata: json['metadata'] != null ? Map<String, dynamic>.from(json['metadata']) : null,
     );
   }
 

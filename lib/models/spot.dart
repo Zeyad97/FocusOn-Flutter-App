@@ -23,13 +23,34 @@ enum ReadinessLevel {
 
 /// Color coding for visual spot management
 enum SpotColor {
-  red('Red'),
-  yellow('Yellow'), 
-  green('Green'),
-  blue('Blue');
+  red('Critical', 4),     // Highest priority - Urgent practice needed
+  yellow('Practice', 3),  // Needs active work
+  green('Maintenance', 2), // Needs occasional review
+  blue('Solved', 1);      // Nearly complete
 
-  const SpotColor(this.displayName);
+  const SpotColor(this.displayName, this.priority);
   final String displayName;
+  final int priority;
+
+  /// Get the corresponding visual color
+  Color get visualColor {
+    switch (this) {
+      case red: return Colors.red;
+      case yellow: return Colors.orange;
+      case green: return Colors.green;
+      case blue: return Colors.blue;
+    }
+  }
+
+  /// Get a readable description of the color's meaning
+  String get description {
+    switch (this) {
+      case red: return 'Urgent spots requiring immediate attention';
+      case yellow: return 'Spots in active practice that need work';
+      case green: return 'Spots that are becoming stable';
+      case blue: return 'Spots that are nearly mastered';
+    }
+  }
 }
 
 /// Practice spot model for SRS-based music practice management
@@ -65,7 +86,7 @@ class Spot {
   final double? lastGapDays; // Last gap between reviews
   final bool manualOverride; // Manual reschedule flag
   final bool retryToday; // Same-day retry flag
-  final String? lastResult; // 'pass' | 'fail' | null
+  final SpotResult? lastResult; // Last practice result
   final DateTime? lastResultAt; // When last result was recorded
   final List<SpotHistory> history; // Practice history
 
@@ -133,6 +154,8 @@ class Spot {
     int? recommendedPracticeTime,
     bool? isActive,
     Map<String, dynamic>? metadata,
+    SpotResult? lastResult,
+    DateTime? lastResultAt,
   }) {
     return Spot(
       id: id ?? this.id,
@@ -161,6 +184,8 @@ class Spot {
       recommendedPracticeTime: recommendedPracticeTime ?? this.recommendedPracticeTime,
       isActive: isActive ?? this.isActive,
       metadata: metadata ?? this.metadata,
+      lastResult: lastResult ?? this.lastResult,
+      lastResultAt: lastResultAt ?? this.lastResultAt,
     );
   }
 
@@ -246,15 +271,13 @@ class Spot {
     if (nextDue == null) return true;
     return DateTime.now().isAfter(nextDue!);
   }
-
+  
   /// Calculate urgency score for prioritization
   double get urgencyScore {
-    double priorityWeight = switch (priority) {
-      SpotPriority.high => 3.0,
-      SpotPriority.medium => 2.0,
-      SpotPriority.low => 1.0,
-    };
+    // Prioritize based on color priority
+    double colorWeight = color.priority * 3.0;
 
+    // Additional weights based on readiness
     double readinessWeight = switch (readinessLevel) {
       ReadinessLevel.newSpot => 3.0,
       ReadinessLevel.learning => 2.5,
@@ -262,23 +285,31 @@ class Spot {
       ReadinessLevel.mastered => 1.0,
     };
 
+    // Overdue multiplier
     double overdueMultiplier = 1.0;
     if (nextDue != null && DateTime.now().isAfter(nextDue!)) {
       final daysPastDue = DateTime.now().difference(nextDue!).inDays;
-      overdueMultiplier = 1.0 + (daysPastDue * 0.1);
+      overdueMultiplier = 1.0 + (daysPastDue * 0.2);
     }
 
-    return priorityWeight * readinessWeight * overdueMultiplier;
+    return colorWeight * readinessWeight * overdueMultiplier;
   }
-
+  
   /// Get display color for UI
-  Color get displayColor {
-    return switch (color) {
-      SpotColor.red => Colors.red,
-      SpotColor.yellow => Colors.orange,
-      SpotColor.green => Colors.green,
-      SpotColor.blue => Colors.blue,
-    };
+  Color get displayColor => color.visualColor;
+
+  /// Get updated color based on practice results
+  SpotColor getUpdatedColorBasedOnResult(SpotResult result) {
+    switch (result) {
+      case SpotResult.failed:
+        return SpotColor.red; // Reset to critical if failed
+      case SpotResult.struggled:
+        return SpotColor.yellow; // Maintain active practice status
+      case SpotResult.good:
+        return color == SpotColor.red ? SpotColor.yellow : SpotColor.green;
+      case SpotResult.excellent:
+        return SpotColor.blue; // Nearly solved
+    }
   }
 
   @override

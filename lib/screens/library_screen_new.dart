@@ -213,11 +213,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     // Filter by category
     if (_selectedCategory != 'All') {
       filtered = filtered.where((piece) => 
-        piece.tags.contains(_selectedCategory) ||
-        (piece.tags.contains('Classical') && _selectedCategory == 'Classical') ||
-        (piece.tags.contains('Jazz') && _selectedCategory == 'Jazz') ||
-        (piece.tags.contains('Pop') && _selectedCategory == 'Pop') ||
-        (piece.tags.contains('Bossa Nova') && _selectedCategory == 'Bossa Nova')
+  false
       ).toList();
     }
 
@@ -500,7 +496,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildPieceCard(Piece piece) {
-    final categoryColor = _getCategoryColor(piece.tags.isNotEmpty ? piece.tags.first : 'Unknown');
+  final categoryColor = _getCategoryColor('Unknown');
     final difficultyText = _getDifficultyText(piece.difficulty);
     
     return GestureDetector(
@@ -627,7 +623,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
-                                        piece.tags.isNotEmpty ? piece.tags.first : 'Music',
+                                        'Music',
                                         style: TextStyle(
                                           fontSize: 9,
                                           color: categoryColor,
@@ -814,28 +810,57 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   void _openPiece(Piece piece) {
-    // Update last opened time
-    ref.read(unifiedLibraryProvider.notifier).updateLastOpened(piece.id);
-    
-    // Navigate to PDF viewer with the piece
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PDFViewerScreen(
-          document: PDFDocument(
-            id: piece.id,
-            title: piece.title,
-            filePath: piece.pdfFilePath,
-            category: piece.tags.isNotEmpty ? piece.tags.first : 'Music',
-            isFavorite: false,
-            lastOpened: DateTime.now(),
+    try {
+      print('LibraryScreen: Opening piece ${piece.title} with path: ${piece.pdfFilePath}');
+      
+      // Check if file exists
+      if (piece.pdfFilePath.isEmpty) {
+        throw Exception('PDF file path is empty');
+      }
+      
+      // Update last opened time
+      ref.read(unifiedLibraryProvider.notifier).updateLastOpened(piece.id);
+      
+      // Navigate to PDF viewer with the piece
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PDFViewerScreen(
+            document: PDFDocument(
+              id: piece.id,
+              title: piece.title,
+              filePath: piece.pdfFilePath,
+              category: 'Music',
+              isFavorite: false,
+              lastOpened: DateTime.now(),
+            ),
           ),
         ),
-      ),
-    ).then((_) {
-      // Refresh library when returning from PDF viewer
-      ref.refresh(unifiedLibraryProvider);
-    });
+      ).then((_) {
+        // Refresh library when returning from PDF viewer
+        ref.refresh(unifiedLibraryProvider);
+      }).catchError((error) {
+        print('LibraryScreen: Error navigating to PDF viewer: $error');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error opening PDF: ${error.toString()}'),
+              backgroundColor: AppColors.errorRed,
+            ),
+          );
+        }
+      });
+    } catch (e) {
+      print('LibraryScreen: Error opening piece: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening piece: ${e.toString()}'),
+            backgroundColor: AppColors.errorRed,
+          ),
+        );
+      }
+    }
   }
 
   void _startPractice(MusicPiece piece) {
@@ -910,7 +935,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       composer: 'Practice Composer',
       keySignature: 'C major',
       difficulty: 3,
-      tags: ['Practice', 'Classical'],
       pdfFilePath: 'assets/pdfs/demo.pdf',
       spots: [],
       createdAt: now,
@@ -942,7 +966,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       composer: pieceDetails['composer'] ?? 'Unknown Composer',
       keySignature: pieceDetails['keySignature'],
       difficulty: pieceDetails['difficulty'],
-      tags: ['Manual'],
       pdfFilePath: '', // No PDF file for manual pieces
       spots: [],
       createdAt: now,
@@ -1039,7 +1062,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     'keySignature': keyController.text.trim().isEmpty 
                         ? null : keyController.text.trim(),
                     'difficulty': difficulty,
-                    'tags': ['Imported'],
                   });
                 }
               },
@@ -1096,7 +1118,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               composer: pieceDetails['composer'] ?? 'Unknown Composer',
               keySignature: pieceDetails['keySignature'],
               difficulty: pieceDetails['difficulty'] ?? 3,
-              tags: pieceDetails['tags'] ?? ['Imported'],
               pdfFilePath: file.path!,
               spots: [],
               createdAt: now,
@@ -1116,11 +1137,103 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             await _createInitialPracticeSpot(piece);
             
             if (mounted) {
+              // Show snackbar first
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Imported "${piece.title}" successfully! Check the AI Practice Dashboard to start practicing.'),
+                  content: Text('Imported "${piece.title}" successfully!'),
                   backgroundColor: AppColors.successGreen,
-                  duration: Duration(seconds: 5),
+                  duration: Duration(seconds: 3),
+                ),
+              );
+              
+              // Then show detailed popup like Lovable
+              await showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  title: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.successGreen.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.check_circle,
+                          color: AppColors.successGreen,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Piece Imported Successfully!',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildInfoRow('Title:', piece.title),
+                      _buildInfoRow('Composer:', piece.composer),
+                      _buildInfoRow('Difficulty:', '${piece.difficulty}/5 stars'),
+                      if (piece.keySignature != null && piece.keySignature!.isNotEmpty)
+                        _buildInfoRow('Key:', piece.keySignature!),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryPurple.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: AppColors.primaryPurple,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Your piece is now in your library! You can open it to add practice spots and start practicing.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _openPiece(piece);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryPurple,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Open Piece'),
+                    ),
+                  ],
                 ),
               );
             }
@@ -1190,6 +1303,37 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       const SnackBar(
         content: Text('Connecting to Google Drive...'),
         backgroundColor: AppColors.warningOrange,
+      ),
+    );
+  }
+
+  /// Helper method to build info rows for the import success dialog
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

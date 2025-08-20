@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../theme/app_theme.dart';
+import '../../providers/app_settings_provider.dart';
 import 'onboarding_view_screen.dart';
 import '../database_test_screen.dart';
 
@@ -36,6 +38,48 @@ final exportFormatProvider = StateNotifierProvider<StringSettingNotifier, String
 
 final cloudStorageProvider = StateNotifierProvider<StringSettingNotifier, String>((ref) {
   return StringSettingNotifier('cloud_storage', 'Google Drive');
+});
+
+// New Settings Providers
+
+// Micro-breaks Settings
+final microBreaksEnabledProvider = StateNotifierProvider<BoolSettingNotifier, bool>((ref) {
+  return BoolSettingNotifier('micro_breaks_enabled', true);
+});
+
+final microBreakIntervalProvider = StateNotifierProvider<DoubleSettingNotifier, double>((ref) {
+  return DoubleSettingNotifier('micro_break_interval', 15.0);
+});
+
+final microBreakDurationProvider = StateNotifierProvider<DoubleSettingNotifier, double>((ref) {
+  return DoubleSettingNotifier('micro_break_duration', 2.0);
+});
+
+// Layout & Typography Settings
+final interfaceDensityProvider = StateNotifierProvider<StringSettingNotifier, String>((ref) {
+  return StringSettingNotifier('interface_density', 'Default');
+});
+
+final fontSizeProvider = StateNotifierProvider<DoubleSettingNotifier, double>((ref) {
+  return DoubleSettingNotifier('font_size', 16.0);
+});
+
+// Learning System Settings
+final learningProfileProvider = StateNotifierProvider<StringSettingNotifier, String>((ref) {
+  return StringSettingNotifier('learning_profile', 'Standard');
+});
+
+// Review Frequency Settings
+final criticalSpotsFrequencyProvider = StateNotifierProvider<DoubleSettingNotifier, double>((ref) {
+  return DoubleSettingNotifier('critical_spots_frequency', 15.0);
+});
+
+final reviewSpotsFrequencyProvider = StateNotifierProvider<DoubleSettingNotifier, double>((ref) {
+  return DoubleSettingNotifier('review_spots_frequency', 20.0);
+});
+
+final maintenanceSpotsFrequencyProvider = StateNotifierProvider<DoubleSettingNotifier, double>((ref) {
+  return DoubleSettingNotifier('maintenance_spots_frequency', 25.0);
 });
 
 // State notifiers for persistent settings
@@ -314,6 +358,129 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
                     const SizedBox(height: 24),
 
+                    // Micro-breaks Settings
+                    _buildSettingsSection(
+                      'Micro-breaks',
+                      Icons.timer,
+                      [
+                        _buildSwitchTile(
+                          'Enable Micro-breaks',
+                          'Take short breaks during practice sessions',
+                          Icons.pause_circle,
+                          ref.watch(appSettingsProvider).microBreaksEnabled,
+                          (value) => ref.read(appSettingsProvider.notifier).updateMicroBreaksEnabled(value),
+                        ),
+                        _buildSliderTile(
+                          'Break Interval',
+                          'How often to take breaks (in minutes)',
+                          Icons.schedule,
+                          ref.watch(appSettingsProvider).microBreakInterval,
+                          15.0,
+                          60.0,
+                          (value) => ref.read(appSettingsProvider.notifier).updateMicroBreakInterval(value),
+                          unit: ' min',
+                        ),
+                        _buildSliderTile(
+                          'Break Duration',
+                          'Length of each break (in minutes)',
+                          Icons.timer_outlined,
+                          ref.watch(appSettingsProvider).microBreakDuration,
+                          1.0,
+                          15.0,
+                          (value) => ref.read(appSettingsProvider.notifier).updateMicroBreakDuration(value),
+                          unit: ' min',
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Layout & Typography Settings
+                    _buildSettingsSection(
+                      'Layout & Typography',
+                      Icons.text_fields,
+                      [
+                        _buildDropdownTile(
+                          'Interface Density',
+                          'Adjust spacing and element sizes',
+                          Icons.density_medium,
+                          ref.watch(appSettingsProvider).interfaceDensity,
+                          ['Compact', 'Default', 'Spacious'],
+                          (value) => ref.read(appSettingsProvider.notifier).updateInterfaceDensity(value!),
+                        ),
+                        _buildSliderTile(
+                          'Font Size',
+                          'Adjust text size throughout the app',
+                          Icons.format_size,
+                          (ref.watch(appSettingsProvider).textScaleFactor - 0.75) / 0.75 * 8 + 12,
+                          12.0,
+                          24.0,
+                          (value) => ref.read(appSettingsProvider.notifier).updateFontSize(value),
+                          unit: 'px',
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Learning System Settings
+                    _buildSettingsSection(
+                      'Learning System',
+                      Icons.school,
+                      [
+                        _buildDropdownTile(
+                          'Learning Profile',
+                          'Choose your practice approach',
+                          Icons.person_outline,
+                          ref.watch(appSettingsProvider).learningProfile,
+                          ['Standard', 'Conservatory', 'Advanced'],
+                          (value) => ref.read(appSettingsProvider.notifier).updateLearningProfile(value!),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Review Frequency Settings
+                    _buildSettingsSection(
+                      'Review Frequency by Difficulty',
+                      Icons.repeat,
+                      [
+                        _buildFrequencySliderTile(
+                          'Critical Spots (Red)',
+                          'High priority spots that need frequent practice',
+                          Icons.priority_high,
+                          ref.watch(appSettingsProvider).criticalSpotsFrequency,
+                          8.0,
+                          25.0,
+                          (value) => ref.read(appSettingsProvider.notifier).updateCriticalSpotsFrequency(value),
+                          AppColors.errorRed,
+                        ),
+                        _buildFrequencySliderTile(
+                          'Review Spots (Yellow)',
+                          'Medium priority spots for regular review',
+                          Icons.warning,
+                          ref.watch(appSettingsProvider).reviewSpotsFrequency,
+                          12.0,
+                          30.0,
+                          (value) => ref.read(appSettingsProvider.notifier).updateReviewSpotsFrequency(value),
+                          AppColors.warningOrange,
+                        ),
+                        _buildFrequencySliderTile(
+                          'Maintenance Spots (Green)',
+                          'Low priority spots for occasional review',
+                          Icons.check_circle,
+                          ref.watch(appSettingsProvider).maintenanceSpotsFrequency,
+                          15.0,
+                          35.0,
+                          (value) => ref.read(appSettingsProvider.notifier).updateMaintenanceSpotsFrequency(value),
+                          AppColors.successGreen,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
                     // About Section
                     _buildSettingsSection(
                       'About',
@@ -555,7 +722,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       subtitle: Text(subtitle, style: TextStyle(color: AppColors.textSecondary)),
       trailing: Switch(
         value: value,
-        onChanged: onChanged,
+        onChanged: (newValue) {
+          HapticFeedback.lightImpact();
+          onChanged(newValue);
+        },
         activeColor: AppColors.primaryPurple,
       ),
     );
@@ -568,8 +738,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     double value,
     double min,
     double max,
-    ValueChanged<double> onChanged,
-  ) {
+    ValueChanged<double> onChanged, {
+    String unit = ' BPM',
+  }) {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -589,7 +760,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               Text(
-                '${value.round()} BPM',
+                '${value.round()}$unit',
                 style: TextStyle(
                   color: AppColors.primaryPurple,
                   fontWeight: FontWeight.bold,
@@ -603,8 +774,82 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             min: min,
             max: max,
             divisions: (max - min).round(),
-            onChanged: onChanged,
+            onChanged: (newValue) {
+              HapticFeedback.lightImpact();
+              onChanged(newValue);
+            },
             activeColor: AppColors.primaryPurple,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFrequencySliderTile(
+    String title,
+    String subtitle,
+    IconData icon,
+    double value,
+    double min,
+    double max,
+    ValueChanged<double> onChanged,
+    Color color,
+  ) {
+    // Calculate approximate review interval
+    int intervalDays = (100 / value).round();
+    String intervalText = intervalDays == 1 ? 'daily' : 'every $intervalDays days';
+    
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Text(subtitle, style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${value.round()}%',
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  Text(
+                    intervalText,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: (max - min).round(),
+            onChanged: (newValue) {
+              HapticFeedback.lightImpact();
+              onChanged(newValue);
+            },
+            activeColor: color,
           ),
         ],
       ),
@@ -886,15 +1131,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 await ref.read(soundEffectsProvider.notifier).toggle();
               }
               
+              // Reset other settings to defaults
               await ref.read(defaultTempoProvider.notifier).update(120.0);
               await ref.read(exportFormatProvider.notifier).update('PDF');
               await ref.read(cloudStorageProvider.notifier).update('Google Drive');
               
+              // Reset new app settings
+              await ref.read(appSettingsProvider.notifier).resetToDefaults();
+              
               Navigator.pop(context);
+              
+              // Show success message with haptic feedback
+              HapticFeedback.heavyImpact();
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Settings reset to defaults'),
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.white),
+                      const SizedBox(width: 8),
+                      const Text('All settings reset to defaults'),
+                    ],
+                  ),
                   backgroundColor: AppColors.successGreen,
+                  duration: const Duration(seconds: 3),
                 ),
               );
             },

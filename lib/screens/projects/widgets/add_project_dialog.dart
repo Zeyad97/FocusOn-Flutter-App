@@ -230,56 +230,6 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Tags
-                      Text(
-                        'Project Tags',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _availableTags.map((tag) {
-                          final isSelected = _selectedTags.contains(tag);
-                          return FilterChip(
-                            label: Text(
-                              tag,
-                              style: TextStyle(
-                                color: isSelected 
-                                    ? AppColors.primaryPurple
-                                    : Theme.of(context).textTheme.bodyMedium?.color,
-                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                              ),
-                            ),
-                            selected: isSelected,
-                            onSelected: (selected) {
-                              setState(() {
-                                if (selected) {
-                                  _selectedTags.add(tag);
-                                } else {
-                                  _selectedTags.remove(tag);
-                                }
-                              });
-                            },
-                            selectedColor: AppColors.primaryPurple.withOpacity(0.15),
-                            backgroundColor: Theme.of(context).chipTheme.backgroundColor ?? 
-                                            Theme.of(context).colorScheme.surfaceContainerHighest,
-                            checkmarkColor: AppColors.primaryPurple,
-                            side: BorderSide(
-                              color: isSelected 
-                                  ? AppColors.primaryPurple 
-                                  : Theme.of(context).colorScheme.outline,
-                              width: 1,
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 16),
-
                       // Pieces Selection
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -474,7 +424,6 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
         'description': _descriptionController.text.trim(),
         'concertDate': _concertDate,
         'dailyGoal': _dailyGoal,
-        'tags': _selectedTags,
         'pieceIds': _selectedPieceIds,
       };
 
@@ -493,7 +442,6 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
       composer: pieceDetails['composer'] ?? 'Unknown Composer',
       keySignature: pieceDetails['keySignature'],
       difficulty: pieceDetails['difficulty'],
-      tags: ['Manual'],
       pdfFilePath: '', // No PDF file for manual pieces
       spots: [],
       createdAt: now,

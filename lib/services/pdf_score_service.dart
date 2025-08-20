@@ -55,7 +55,6 @@ class PDFScoreService {
         pdfFilePath: targetFile.path,
         difficulty: metadata['difficulty'] ?? 3,
         keySignature: metadata['key'] ?? '',
-        tags: _generateInitialTags(fileName, metadata),
         totalTimeSpent: Duration.zero,
         thumbnailPath: thumbnailPath,
         targetTempo: metadata['tempo']?.toDouble(),
@@ -163,75 +162,6 @@ class PDFScoreService {
     }
     
     return metadata;
-  }
-  
-  /// Generate initial tags based on filename and metadata
-  static List<String> _generateInitialTags(String fileName, Map<String, dynamic> metadata) {
-    final tags = <String>[];
-    final cleanName = fileName.toLowerCase();
-    
-    // Genre tags
-    if (cleanName.contains('bach') || cleanName.contains('baroque')) {
-      tags.add('Baroque');
-    }
-    if (cleanName.contains('mozart') || cleanName.contains('classical')) {
-      tags.add('Classical');
-    }
-    if (cleanName.contains('chopin') || cleanName.contains('romantic')) {
-      tags.add('Romantic');
-    }
-    if (cleanName.contains('jazz')) {
-      tags.add('Jazz');
-    }
-    if (cleanName.contains('blues')) {
-      tags.add('Blues');
-    }
-    
-    // Form tags
-    if (cleanName.contains('sonata')) {
-      tags.add('Sonata');
-    }
-    if (cleanName.contains('etude') || cleanName.contains('study')) {
-      tags.add('Etude');
-    }
-    if (cleanName.contains('prelude')) {
-      tags.add('Prelude');
-    }
-    if (cleanName.contains('fugue')) {
-      tags.add('Fugue');
-    }
-    if (cleanName.contains('concerto')) {
-      tags.add('Concerto');
-    }
-    if (cleanName.contains('waltz')) {
-      tags.add('Waltz');
-    }
-    if (cleanName.contains('nocturne')) {
-      tags.add('Nocturne');
-    }
-    
-    // Difficulty tags
-    final difficulty = metadata['difficulty'] as int?;
-    if (difficulty != null) {
-      if (difficulty <= 2) {
-        tags.add('Beginner');
-      } else if (difficulty >= 4) {
-        tags.add('Advanced');
-      }
-    }
-    
-    // Add composer if available
-    final composer = metadata['composer'] as String?;
-    if (composer != null && composer.isNotEmpty) {
-      tags.add(composer);
-    }
-    
-    // Default tag
-    if (tags.isEmpty) {
-      tags.add('Untagged');
-    }
-    
-    return tags;
   }
   
   /// Clean filename for display

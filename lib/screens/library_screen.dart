@@ -21,6 +21,9 @@ class MusicPiece {
   final String difficulty;
   final Color categoryColor;
   final bool isFavorite;
+  final String? duration; // New field for duration
+  final String? key; // New field for musical key
+  final int spotsCount; // New field for spots count
 
   MusicPiece({
     required this.id,
@@ -33,6 +36,9 @@ class MusicPiece {
     required this.difficulty,
     required this.categoryColor,
     this.isFavorite = false,
+    this.duration,
+    this.key,
+    this.spotsCount = 0,
   });
 }
 
@@ -77,6 +83,9 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
         difficulty: 'Intermediate',
         categoryColor: AppColors.primaryPurple,
         isFavorite: true,
+        duration: '4:30',
+        key: 'E♭ major',
+        spotsCount: 8,
       ),
       MusicPiece(
         id: '2',
@@ -89,6 +98,9 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
         difficulty: 'Advanced',
         categoryColor: AppColors.primaryPurple,
         isFavorite: true,
+        duration: '5:15',
+        key: 'D♭ major',
+        spotsCount: 5,
       ),
       MusicPiece(
         id: '3',
@@ -100,6 +112,9 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
         practiceProgress: 0.67,
         difficulty: 'Intermediate',
         categoryColor: AppColors.warningOrange,
+        duration: '3:20',
+        key: 'G minor',
+        spotsCount: 12,
       ),
       MusicPiece(
         id: '4',
@@ -111,6 +126,9 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
         practiceProgress: 0.73,
         difficulty: 'Advanced',
         categoryColor: AppColors.primaryPurple,
+        duration: '6:00',
+        key: 'C♯ minor',
+        spotsCount: 15,
       ),
       MusicPiece(
         id: '5',
@@ -122,6 +140,9 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
         practiceProgress: 0.45,
         difficulty: 'Beginner',
         categoryColor: AppColors.successGreen,
+        duration: '2:45',
+        key: 'F major',
+        spotsCount: 3,
       ),
       MusicPiece(
         id: '6',
@@ -133,6 +154,9 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
         practiceProgress: 0.28,
         difficulty: 'Beginner',
         categoryColor: AppColors.errorRed,
+        duration: '3:03',
+        key: 'C major',
+        spotsCount: 2,
       ),
     ];
   }
@@ -151,6 +175,9 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
           difficulty: piece.difficulty,
           categoryColor: piece.categoryColor,
           isFavorite: !piece.isFavorite,
+          duration: piece.duration,
+          key: piece.key,
+          spotsCount: piece.spotsCount,
         );
       }
       return piece;
@@ -764,17 +791,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                   ),
                   // Play button overlay
                   Center(
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.9),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow,
-                        color: AppColors.primaryPurple,
-                        size: 28,
+                    child: GestureDetector(
+                      onTap: () {
+                        FeedbackSystem.medium();
+                        _openPiece(piece);
+                      },
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow,
+                          color: AppColors.primaryPurple,
+                          size: 28,
+                        ),
                       ),
                     ),
                   ),
@@ -810,6 +843,62 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (piece.duration != null || piece.key != null) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        if (piece.duration != null) ...[
+                          Icon(Icons.access_time, size: 10, color: AppColors.textSecondary),
+                          const SizedBox(width: 2),
+                          Text(
+                            piece.duration!,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                        if (piece.duration != null && piece.key != null) ...[
+                          const SizedBox(width: 8),
+                          Text('•', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                          const SizedBox(width: 8),
+                        ],
+                        if (piece.key != null) ...[
+                          Icon(Icons.music_note, size: 10, color: AppColors.textSecondary),
+                          const SizedBox(width: 2),
+                          Text(
+                            piece.key!,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                        const Spacer(),
+                        if (piece.spotsCount > 0) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: piece.spotsCount > 10 ? AppColors.errorRed.withOpacity(0.1) :
+                                     piece.spotsCount > 5 ? AppColors.warningOrange.withOpacity(0.1) :
+                                     AppColors.successGreen.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${piece.spotsCount} spots',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w500,
+                                color: piece.spotsCount > 10 ? AppColors.errorRed :
+                                       piece.spotsCount > 5 ? AppColors.warningOrange :
+                                       AppColors.successGreen,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -1061,28 +1150,44 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+              if (piece.duration != null || piece.key != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    if (piece.duration != null) ...[
+                      Icon(Icons.access_time, size: 12, color: AppColors.textSecondary),
+                      const SizedBox(width: 4),
+                      Text(
+                        piece.duration!,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                    if (piece.duration != null && piece.key != null)
+                      const Spacer(),
+                    if (piece.key != null) ...[
+                      Icon(Icons.music_note, size: 12, color: AppColors.textSecondary),
+                      const SizedBox(width: 4),
+                      Text(
+                        piece.key!,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
 
               const SizedBox(height: 12),
 
               // Category and difficulty
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: piece.categoryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      piece.category,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: piece.categoryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
+                  // Removed category tag for cleaner design
                   Text(
                     piece.difficulty,
                     style: TextStyle(
@@ -1221,102 +1326,116 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
   }
 
   void _openPiece(MusicPiece piece) async {
-    FeedbackSystem.medium();
-    
-    // Get the actual Piece object from the provider
-    final actualPiece = ref.read(piecesProvider.notifier).getPiece(piece.id);
-    
-    if (actualPiece != null && actualPiece.pdfFilePath.isNotEmpty) {
-      // Navigate with enhanced animation
-      await Navigator.of(context).push(
-        AppAnimations.createRoute<void>(
-          page: PDFScoreViewer(piece: actualPiece),
-          duration: const Duration(milliseconds: 500),
-        ),
-      );
-    } else {
-      // For demo pieces, show enhanced dialog
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+    try {
+      FeedbackSystem.medium();
+      
+      // Get the actual Piece object from the provider
+      final actualPiece = ref.read(piecesProvider.notifier).getPiece(piece.id);
+      
+      if (actualPiece != null && actualPiece.pdfFilePath.isNotEmpty) {
+        print('LibraryScreen: Opening piece ${actualPiece.title} with path: ${actualPiece.pdfFilePath}');
+        
+        // Navigate with enhanced animation
+        await Navigator.of(context).push(
+          AppAnimations.createRoute<void>(
+            page: PDFScoreViewer(piece: actualPiece),
+            duration: const Duration(milliseconds: 500),
           ),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: piece.categoryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
+        );
+      } else {
+        // For demo pieces or pieces without valid paths, show enhanced dialog
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: piece.categoryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.music_note, color: piece.categoryColor),
                 ),
-                child: Icon(Icons.music_note, color: piece.categoryColor),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  piece.title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    piece.title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Composer: ${piece.composer}'),
-              const SizedBox(height: 8),
-              Text('Category: ${piece.category}'),
-              Text('Difficulty: ${piece.difficulty}'),
-              Text('Pages: ${piece.pages}'),
-              const SizedBox(height: 16),
-              Text(
-                'Practice Progress: ${(piece.practiceProgress * 100).toInt()}%',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: piece.categoryColor,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryPurple.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'This is a demo piece. Import your own PDF files to open and practice with the full PDF viewer.',
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Composer: ${piece.composer}'),
+                const SizedBox(height: 8),
+                Text('Difficulty: ${piece.difficulty}'),
+                Text('Pages: ${piece.pages}'),
+                const SizedBox(height: 16),
+                Text(
+                  'Practice Progress: ${(piece.practiceProgress * 100).toInt()}%',
                   style: TextStyle(
-                    fontSize: 12,
-                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.bold,
+                    color: piece.categoryColor,
                   ),
                 ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryPurple.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'This is a demo piece. Import your own PDF files to open and practice with the full PDF viewer.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Close',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _importPDF();
+                },
+                style: FilledButton.styleFrom(backgroundColor: piece.categoryColor),
+                child: const Text('Import PDF'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Close',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _importPDF();
-              },
-              style: FilledButton.styleFrom(backgroundColor: piece.categoryColor),
-              child: const Text('Import PDF'),
-            ),
-          ],
-        ),
-      );
+        );
+      }
+    } catch (e) {
+      print('LibraryScreen: Error opening piece: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening piece: ${e.toString()}'),
+            backgroundColor: AppColors.errorRed,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -1709,17 +1828,113 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
           id: piece.id,
           title: piece.title,
           composer: piece.composer,
-          category: piece.tags.isNotEmpty ? piece.tags.first : 'Uncategorized',
+          category: 'Uncategorized',
           dateAdded: piece.createdAt,
           pages: piece.totalPages,
           practiceProgress: 0.0,
           difficulty: piece.difficulty.toString(),
-          categoryColor: _getCategoryColor(piece.tags.isNotEmpty ? piece.tags.first : 'Uncategorized'),
+          categoryColor: _getCategoryColor('Uncategorized'),
           isFavorite: false,
+          duration: piece.metadata?['duration'],
+          key: piece.metadata?['key'],
+          spotsCount: 0, // New pieces start with 0 spots
         );
 
         // Add the piece to the library state
         ref.read(libraryProvider.notifier).addPiece(musicPiece);
+
+        // Show success popup like Lovable
+        if (mounted) {
+          await showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.successGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.check_circle,
+                      color: AppColors.successGreen,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Piece Imported Successfully!',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildInfoRow('Title:', piece.title),
+                  _buildInfoRow('Composer:', piece.composer),
+                  _buildInfoRow('Difficulty:', '${piece.difficulty}/5 stars'),
+                  if (piece.keySignature != null && piece.keySignature!.isNotEmpty)
+                    _buildInfoRow('Key:', piece.keySignature!),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryPurple.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: AppColors.primaryPurple,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Your piece is now in your library! You can open it to add practice spots and start practicing.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _openPiece(musicPiece);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryPurple,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Open Piece'),
+                ),
+              ],
+            ),
+          );
+        }
 
         FeedbackSystem.showSuccess(
           context,
@@ -1846,6 +2061,37 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
         'Error connecting to cloud: ${e.toString()}',
       );
     }
+  }
+
+  /// Helper method to build info rows for the import success dialog
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

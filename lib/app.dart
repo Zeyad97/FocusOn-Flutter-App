@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/library_screen.dart';
 import 'screens/favorites_screen.dart';
 import 'screens/settings_screen.dart';
-import 'screens/scoreread_pro_demo_screen.dart';
+// import 'screens/scoreread_pro_demo_screen.dart';
 
 class App extends StatefulWidget {
   const App({super.key});
@@ -17,7 +17,7 @@ class _AppState extends State<App> {
   static const List<Widget> _screens = <Widget>[
     LibraryScreen(),
     FavoritesScreen(),
-    ScoreReadProDemoScreen(),
+        // ScoreReadProDemoScreen(),
     SettingsScreen(),
   ];
 

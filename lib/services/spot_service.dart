@@ -88,6 +88,54 @@ class SpotService {
     
     print('SpotService: Spot saved successfully');
   }
+
+  Future<void> recordPracticeSession(String spotId, SpotResult result, int practiceTimeMinutes, {String? notes}) async {
+    final db = await database;
+    
+    // Record practice history
+    final historyId = DateTime.now().millisecondsSinceEpoch.toString();
+    await db.insert('spot_history', {
+      'id': historyId,
+      'spotId': spotId,
+      'timestamp': DateTime.now().toIso8601String(),
+      'result': result.name,
+      'practiceTimeMinutes': practiceTimeMinutes,
+      'notes': notes,
+      'metadata': '{}',
+    });
+    
+    // Update spot with practice results
+    final spot = await getSpot(spotId);
+    if (spot != null) {
+      final updatedSpot = spot.copyWith(
+        practiceCount: spot.practiceCount + 1,
+        successCount: result == SpotResult.excellent || result == SpotResult.good 
+            ? spot.successCount + 1 
+            : spot.successCount,
+        failureCount: result == SpotResult.failed 
+            ? spot.failureCount + 1 
+            : spot.failureCount,
+        lastPracticed: DateTime.now(),
+        lastResult: result,
+        lastResultAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        color: spot.getUpdatedColorBasedOnResult(result),
+      );
+      
+      await saveSpot(updatedSpot);
+      print('SpotService: Practice session recorded for spot $spotId');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getPracticeHistory(String spotId) async {
+    final db = await database;
+    return await db.query(
+      'spot_history',
+      where: 'spotId = ?',
+      whereArgs: [spotId],
+      orderBy: 'timestamp DESC',
+    );
+  }
   
   Future<Spot?> getSpot(String id) async {
     final db = await database;

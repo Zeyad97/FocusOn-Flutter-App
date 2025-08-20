@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'theme/app_theme.dart';
+import 'providers/app_settings_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_navigation.dart';
@@ -16,15 +16,58 @@ class FocusONScoresApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final appSettings = ref.watch(appSettingsProvider);
     final isDarkMode = ref.watch(darkModeProvider);
     
     return MaterialApp(
       title: 'FocusON Music',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
+      theme: _buildLightTheme(appSettings),
+      darkTheme: _buildDarkTheme(appSettings),
       themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
       home: const SplashScreen(),
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaleFactor: appSettings.textScaleFactor,
+          ),
+          child: child!,
+        );
+      },
+    );
+  }
+
+  ThemeData _buildLightTheme(AppSettings settings) {
+    return AppTheme.lightTheme.copyWith(
+      cardTheme: CardThemeData(
+        margin: EdgeInsets.all(settings.interfacePadding / 2),
+        elevation: settings.interfaceDensity == 'Compact' ? 2 : 
+                   settings.interfaceDensity == 'Spacious' ? 8 : 4,
+      ),
+      listTileTheme: ListTileThemeData(
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: settings.interfacePadding,
+          vertical: settings.interfacePadding / 4,
+        ),
+        dense: settings.interfaceDensity == 'Compact',
+      ),
+    );
+  }
+
+  ThemeData _buildDarkTheme(AppSettings settings) {
+    return AppTheme.darkTheme.copyWith(
+      cardTheme: CardThemeData(
+        margin: EdgeInsets.all(settings.interfacePadding / 2),
+        elevation: settings.interfaceDensity == 'Compact' ? 2 : 
+                   settings.interfaceDensity == 'Spacious' ? 8 : 4,
+      ),
+      listTileTheme: ListTileThemeData(
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: settings.interfacePadding,
+          vertical: settings.interfacePadding / 4,
+        ),
+        dense: settings.interfaceDensity == 'Compact',
+      ),
     );
   }
 }

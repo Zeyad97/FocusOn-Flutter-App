@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import '../../models/piece.dart';
 import '../../models/spot.dart';
 import '../pdf_viewer/pdf_score_viewer.dart';
+import '../../services/piece_service.dart';
 import 'widgets/piece_card.dart';
 import 'widgets/library_header.dart';
 import 'widgets/practice_status_bar.dart';
@@ -38,10 +39,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       _isLoading = true;
     });
 
-    try {
-      // TODO: Load from database service
-      // For now, create some demo data
-      _pieces = _createDemoData();
+    try {// Load pieces from database service
+      final pieceService = PieceService();
+      _pieces = await pieceService.getAllPieces();
       _filterAndSortPieces();
     } catch (e) {
       if (mounted) {
@@ -450,5 +450,8 @@ enum SortOrder {
   title,
   composer,
   lastOpened,
+  difficulty,
+}
+
   difficulty,
 }

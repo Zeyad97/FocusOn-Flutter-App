@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../theme/app_theme.dart';
+import '../../../services/piece_service.dart';
+import '../../../models/piece.dart';
 
 /// Dialog for importing PDF files
 class ImportPDFDialog extends StatefulWidget {
@@ -10,20 +12,21 @@ class ImportPDFDialog extends StatefulWidget {
   State<ImportPDFDialog> createState() => _ImportPDFDialogState();
 }
 
-class _ImportPDFDialogState extends State<ImportPDFDialog> {
-  final _titleController = TextEditingController();
+class _ImportPDFDialogState extends State<ImportPDFDialog> {final _titleController = TextEditingController();
   final _composerController = TextEditingController();
-  final _keySignatureController = TextEditingController();
+  final _durationController = TextEditingController();
+  final _genreController = TextEditingController();
   int _difficulty = 3;
   DateTime? _concertDate;
   String? _selectedFilePath;
   bool _isImporting = false;
+  String? _selectedMusicStyle; // Removed music styles
 
   @override
   void dispose() {
     _titleController.dispose();
-    _composerController.dispose();
-    _keySignatureController.dispose();
+    _composerController.dispose();_durationController.dispose();
+    _genreController.dispose();
     super.dispose();
   }
 
@@ -73,14 +76,43 @@ class _ImportPDFDialogState extends State<ImportPDFDialog> {
 
     try {
       // Simulate processing the PDF
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 2));// Import piece with song info like Lovable
+      final pieceService = PieceService();// Show import confirmation dialog
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Piece Imported'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Title: ${_titleController.text.trim()}'),
+              Text('Composer: ${_composerController.text.trim()}'),
+              Text('Duration: ${_durationController.text.trim() + ' mins'}'),
+              Text('Difficulty: $_difficulty/5'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
 
-      // TODO: Implement actual import logic
-      // This would involve:
-      // 1. Copying the PDF to app documents directory
-      // 2. Creating a new Piece object in the database
-      // 3. Generating thumbnail previews
-      // 4. Parsing metadata if available
+      final newPiece = Piece(
+        title: _titleController.text.trim(),
+        composer: _composerController.text.trim(),
+        difficulty: _difficulty,
+        duration: int.tryParse(_durationController.text.trim()) ?? 0,
+        genre: _genreController.text.trim(),
+        filePath: _selectedFilePath!,
+        concertDate: _concertDate,
+        lastPracticed: null,
+        addedDate: DateTime.now(),
+      );
+      await pieceService.addPiece(newPiece);
 
       if (mounted) {
         Navigator.of(context).pop(true); // Return success
@@ -271,6 +303,19 @@ class _ImportPDFDialogState extends State<ImportPDFDialog> {
             
             const SizedBox(height: 16),
             
+            // Genre field
+            TextField(
+              controller: _genreController,
+              decoration: const InputDecoration(
+                labelText: 'Genre',
+                hintText: 'e.g., Classical, Jazz',
+                border: OutlineInputBorder(),
+              ),
+              enabled: !_isImporting,
+            ),
+
+            const SizedBox(height: 16),
+            
             // Composer field
             TextField(
               controller: _composerController,
@@ -288,12 +333,12 @@ class _ImportPDFDialogState extends State<ImportPDFDialog> {
             // Key signature field
             TextField(
               controller: _keySignatureController,
-              decoration: const InputDecoration(
-                labelText: 'Key Signature',
-                hintText: 'e.g., E♭ major',
+              decoration: const InputDecoration(labelText: 'Duration',
+                hintText: 'e.g., 5 minutes',
                 border: OutlineInputBorder(),
               ),
               enabled: !_isImporting,
+              keyboardType: TextInputType.number,
             ),
             
             const SizedBox(height: 16),

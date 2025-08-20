@@ -148,6 +148,8 @@ class _PieceManagementScreenState extends ConsumerState<PieceManagementScreen> {
                     setState(() {
                       selectedPieces.clear();
                       hasChanges = !_setsEqual(selectedPieces, Set.from(widget.project.pieceIds));
+                      print('Cleared all selections');
+                      print('Has changes: $hasChanges');
                     });
                   },
                   icon: const Icon(Icons.clear_all),
@@ -195,27 +197,70 @@ class _PieceManagementScreenState extends ConsumerState<PieceManagementScreen> {
                   );
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 100), // Extra padding for FAB
-                  itemCount: pieces.length,
-                  itemBuilder: (context, index) {
-                    final piece = pieces[index];
-                    final isSelected = selectedPieces.contains(piece.id);
+                return Column(
+                  children: [
+                    // Selection controls
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                selectedPieces = pieces.map((p) => p.id).toSet();
+                                hasChanges = !_setsEqual(selectedPieces, Set.from(widget.project.pieceIds));
+                                print('Selected all pieces: ${selectedPieces.toList()}');
+                                print('Has changes: $hasChanges');
+                              });
+                            },
+                            icon: const Icon(Icons.select_all, size: 18),
+                            label: const Text('Select All'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.primaryPurple,
+                              side: BorderSide(color: AppColors.primaryPurple),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${selectedPieces.length} of ${pieces.length} selected',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      child: CheckboxListTile(
-                        value: isSelected,
-                        onChanged: (bool? value) {
-                          setState(() {
-                            if (value == true) {
-                              selectedPieces.add(piece.id);
-                            } else {
-                              selectedPieces.remove(piece.id);
-                            }
-                            hasChanges = !_setsEqual(selectedPieces, Set.from(widget.project.pieceIds));
-                          });
-                        },
+                    const SizedBox(height: 16),
+                    
+                    // Pieces list
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.only(bottom: 100), // Extra padding for FAB
+                        itemCount: pieces.length,
+                        itemBuilder: (context, index) {
+                          final piece = pieces[index];
+                          final isSelected = selectedPieces.contains(piece.id);
+                          
+                          return Card(
+                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            child: CheckboxListTile(
+                              value: isSelected,
+                              onChanged: (bool? value) {
+                                setState(() {
+                                  if (value == true) {
+                                    selectedPieces.add(piece.id);
+                                  } else {
+                                    selectedPieces.remove(piece.id);
+                                  }
+                                  hasChanges = !_setsEqual(selectedPieces, Set.from(widget.project.pieceIds));
+                                  print('Piece ${piece.title} ${value == true ? 'selected' : 'deselected'}');
+                                  print('Selected pieces: ${selectedPieces.toList()}');
+                                  print('Has changes: $hasChanges');
+                                });
+                              },
                         title: Text(
                           piece.title,
                           style: const TextStyle(
@@ -248,6 +293,9 @@ class _PieceManagementScreenState extends ConsumerState<PieceManagementScreen> {
                       ),
                     );
                   },
+                ),
+                    ),
+                  ],
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -313,6 +361,12 @@ class _PieceManagementScreenState extends ConsumerState<PieceManagementScreen> {
       print('Project updated successfully');
 
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Project updated with ${selectedPieces.length} pieces'),
+            backgroundColor: AppColors.successGreen,
+          ),
+        );
         Navigator.pop(context, true); // Return true to indicate changes were saved
       }
     } catch (e) {
@@ -339,7 +393,6 @@ class _PieceManagementScreenState extends ConsumerState<PieceManagementScreen> {
       composer: pieceDetails['composer'] ?? 'Unknown Composer',
       keySignature: pieceDetails['keySignature'],
       difficulty: pieceDetails['difficulty'],
-      tags: ['Manual'],
       pdfFilePath: '', // No PDF file for manual pieces
       spots: [],
       createdAt: now,

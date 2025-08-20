@@ -617,13 +617,34 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
         ],
       ),
     );
-  }
-
-  void _startPracticeSession(Project project) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Starting practice session for ${project.name}'),
-        backgroundColor: project.color,
+  }void _startPracticeSession(Project project) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Choose Piece to Practice', style: TextStyle(color: project.color)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: project.pieces.map((piece) => ListTile(
+            title: Text(piece),
+            trailing: Icon(Icons.play_arrow, color: project.color),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Implement piece practice logic
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Practicing $piece'),
+                  backgroundColor: project.color,
+                ),
+              );
+            },
+          )).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
       ),
     );
   }

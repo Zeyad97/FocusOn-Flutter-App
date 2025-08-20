@@ -236,82 +236,54 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
                     
                     const SizedBox(height: 24),
                     
-                    // Action buttons - How did this spot go?
-                    Text(
-                      'How did this practice spot go?',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // 2x2 Grid of result buttons
-                    Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildResultButton(
-                                context,
-                                SpotResult.failed,
-                                Icons.close,
-                                Colors.red,
-                                'Need more work',
-                                () => _completeSpot(notifier, SpotResult.failed),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildResultButton(
-                                context,
-                                SpotResult.struggled,
-                                Icons.sentiment_dissatisfied,
-                                Colors.orange,
-                                'Some difficulties',
-                                () => _completeSpot(notifier, SpotResult.struggled),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildResultButton(
-                                context,
-                                SpotResult.good,
-                                Icons.sentiment_satisfied,
-                                Colors.blue,
-                                'Went well',
-                                () => _completeSpot(notifier, SpotResult.good),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildResultButton(
-                                context,
-                                SpotResult.excellent,
-                                Icons.star,
-                                Colors.green,
-                                'Nailed it!',
-                                () => _completeSpot(notifier, SpotResult.excellent),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // Session controls
+                    // Action buttons
                     Row(
                       children: [
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: () => _showCancelDialog(notifier),
+                            onPressed: () => _completeSpot(notifier, SpotResult.failed),
                             icon: const Icon(Icons.close),
-                            label: const Text('Cancel Session'),
+                            label: const Text('Failed'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _completeSpot(notifier, SpotResult.struggled),
+                            icon: const Icon(Icons.warning),
+                            label: const Text('Struggled'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.orange,
+                              side: const BorderSide(color: Colors.orange),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _completeSpot(notifier, SpotResult.good),
+                            icon: const Icon(Icons.check),
+                            label: const Text('Good'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.green,
+                              side: const BorderSide(color: Colors.green),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _showSolvedSpotDialog(notifier),
+                            icon: const Icon(Icons.star),
+                            label: const Text('Solved'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green.shade700,
+                              foregroundColor: Colors.white,
+                            ),
                           ),
                         ),
                       ],
@@ -409,13 +381,48 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
         ],
       ),
     );
-  }
-
-  void _completeSpot(ActivePracticeSessionNotifier notifier, SpotResult result) {
+  }void _completeSpot(ActivePracticeSessionNotifier notifier, SpotResult result) {
     notifier.completeCurrentSpot(result);
     setState(() {
       _spotElapsed = Duration.zero; // Reset spot timer
     });
+  }
+
+  void _showSolvedSpotDialog(ActivePracticeSessionNotifier notifier) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Spot Solved'),
+        content: const Text('Congratulations! You solved this spot. Do you want to delete it from future practice sessions?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              // Mark as solved but keep the spot
+              notifier.completeCurrentSpot(SpotResult.excellent);
+              Navigator.pop(context);
+            },
+            child: const Text('Keep Spot'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // Mark as solved and delete the spot
+              notifier.completeCurrentSpot(SpotResult.excellent);
+              // TODO: Implement spot deletion logic here
+              Navigator.pop(context);
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Spot deleted successfully!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete Spot', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCancelDialog(ActivePracticeSessionNotifier notifier) {
@@ -472,52 +479,5 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
     if (spotId.contains('spot_3')) return '25-32';
     if (spotId.contains('spot_4')) return '33-40';
     return '1-8';
-  }
-
-  Widget _buildResultButton(
-    BuildContext context,
-    SpotResult result,
-    IconData icon,
-    Color color,
-    String subtitle,
-    VoidCallback onPressed,
-  ) {
-    return Container(
-      height: 80,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color.withOpacity(0.1),
-          foregroundColor: color,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: color.withOpacity(0.3)),
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 24),
-            const SizedBox(height: 4),
-            Text(
-              result.displayName,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 10,
-                color: color.withOpacity(0.8),
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
