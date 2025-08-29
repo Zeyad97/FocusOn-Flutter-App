@@ -5,11 +5,9 @@ import '../models/spot.dart';
 import '../models/annotation.dart';
 import '../models/project.dart';
 import '../services/srs_service.dart';
-import '../services/readiness_service.dart';
+import '../services/readiness_service.dart' as readiness_service;
 import '../services/practice_session_service.dart';
 import '../services/time_tracking_service.dart';
-import '../services/pdf_score_service.dart';
-import '../services/annotation_drawing_service.dart';
 import '../theme/app_theme.dart';
 
 /// Comprehensive demo screen showcasing ScoreRead Pro features
@@ -31,7 +29,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
   
   // Services
   final _srsService = const SRSService();
-  final _readinessService = const ReadinessService();
+  final _readinessService = const readiness_service.ReadinessService();
   final _practiceService = const PracticeSessionService();
   final _timeService = TimeTrackingService();
   
@@ -55,18 +53,17 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
         id: 'demo_piece_1',
         title: 'Chopin Nocturne Op. 9 No. 2',
         composer: 'Frédéric Chopin',
-        filePath: 'assets/demo_chopin.pdf',
+        pdfFilePath: 'assets/demo_chopin.pdf',
         difficulty: 4,
         keySignature: 'E♭ major',
-        timeSignature: '12/8',
-        tags: ['Romantic', 'Nocturne', 'Chopin', 'Advanced'],
-        viewMode: ViewMode.singlePage,
+        genre: 'Romantic',
+        duration: 5, // minutes
         totalTimeSpent: const Duration(hours: 8, minutes: 30),
         targetTempo: 120,
         currentTempo: 108,
-        estimatedDuration: const Duration(minutes: 4, seconds: 30),
         spots: _createDemoSpots('demo_piece_1'),
         createdAt: DateTime.now().subtract(const Duration(days: 30)),
+        updatedAt: DateTime.now().subtract(const Duration(hours: 2)),
         lastOpened: DateTime.now().subtract(const Duration(hours: 2)),
         lastViewedPage: 2,
       ),
@@ -74,36 +71,34 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
         id: 'demo_piece_2',
         title: 'Bach Invention No. 1 in C major',
         composer: 'Johann Sebastian Bach',
-        filePath: 'assets/demo_bach.pdf',
+        pdfFilePath: 'assets/demo_bach.pdf',
         difficulty: 3,
         keySignature: 'C major',
-        timeSignature: '4/4',
-        tags: ['Baroque', 'Invention', 'Bach', 'Intermediate'],
-        viewMode: ViewMode.singlePage,
+        genre: 'Baroque',
+        duration: 2, // minutes
         totalTimeSpent: const Duration(hours: 12, minutes: 15),
         targetTempo: 120,
         currentTempo: 118,
-        estimatedDuration: const Duration(minutes: 1, seconds: 45),
         spots: _createDemoSpots('demo_piece_2'),
         createdAt: DateTime.now().subtract(const Duration(days: 45)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
         lastOpened: DateTime.now().subtract(const Duration(days: 1)),
       ),
       Piece(
         id: 'demo_piece_3',
         title: 'Debussy Clair de Lune',
         composer: 'Claude Debussy',
-        filePath: 'assets/demo_debussy.pdf',
+        pdfFilePath: 'assets/demo_debussy.pdf',
         difficulty: 5,
         keySignature: 'D♭ major',
-        timeSignature: '9/8',
-        tags: ['Impressionist', 'Debussy', 'Virtuoso'],
-        viewMode: ViewMode.singlePage,
+        genre: 'Impressionist',
+        duration: 5, // minutes
         totalTimeSpent: const Duration(hours: 25, minutes: 45),
         targetTempo: 66,
         currentTempo: 62,
-        estimatedDuration: const Duration(minutes: 5, seconds: 15),
         spots: _createDemoSpots('demo_piece_3'),
         createdAt: DateTime.now().subtract(const Duration(days: 60)),
+        updatedAt: DateTime.now().subtract(const Duration(hours: 6)),
         lastOpened: DateTime.now().subtract(const Duration(hours: 6)),
       ),
     ];
@@ -117,6 +112,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
       dailyPracticeGoal: const Duration(minutes: 60),
       pieceIds: _demoPieces.map((p) => p.id).toList(),
       createdAt: DateTime.now().subtract(const Duration(days: 30)),
+      updatedAt: DateTime.now().subtract(const Duration(days: 1)),
     );
     
     // Create demo annotations
@@ -130,23 +126,33 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
         id: '${pieceId}_spot_1',
         pieceId: pieceId,
         title: 'Opening melody',
+        description: 'Focus on phrasing and dynamics',
         pageNumber: 1,
-        position: const Offset(0.3, 0.2),
+        x: 0.3,
+        y: 0.2,
+        width: 0.2,
+        height: 0.1,
+        priority: SpotPriority.medium,
+        readinessLevel: ReadinessLevel.learning,
         color: SpotColor.yellow,
-        difficulty: 3,
-        note: 'Focus on phrasing and dynamics',
+        createdAt: now.subtract(const Duration(days: 1)),
+        updatedAt: now.subtract(const Duration(hours: 6)),
         lastPracticed: now.subtract(const Duration(hours: 6)),
         nextDue: now.add(const Duration(hours: 18)),
-        recommendedPracticeTime: const Duration(minutes: 5),
+        recommendedPracticeTime: 5, // minutes
         history: [
           SpotHistory(
             id: '1',
-            result: SpotResult.success,
+            spotId: '${pieceId}_spot_1',
+            practiceTimeMinutes: 5,
+            result: SpotResult.good,
             timestamp: now.subtract(const Duration(hours: 6)),
           ),
           SpotHistory(
             id: '2',
-            result: SpotResult.partial,
+            spotId: '${pieceId}_spot_1',
+            practiceTimeMinutes: 3,
+            result: SpotResult.struggled,
             timestamp: now.subtract(const Duration(days: 1)),
           ),
         ],
@@ -155,23 +161,33 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
         id: '${pieceId}_spot_2',
         pieceId: pieceId,
         title: 'Tricky passage',
+        description: 'Slow practice needed - complex fingering',
         pageNumber: 2,
-        position: const Offset(0.6, 0.4),
+        x: 0.6,
+        y: 0.4,
+        width: 0.25,
+        height: 0.15,
+        priority: SpotPriority.high,
+        readinessLevel: ReadinessLevel.learning,
         color: SpotColor.red,
-        difficulty: 5,
-        note: 'Slow practice needed - complex fingering',
+        createdAt: now.subtract(const Duration(days: 2)),
+        updatedAt: now.subtract(const Duration(hours: 12)),
         lastPracticed: now.subtract(const Duration(hours: 12)),
         nextDue: now.subtract(const Duration(hours: 2)), // Overdue
-        recommendedPracticeTime: const Duration(minutes: 8),
+        recommendedPracticeTime: 8, // minutes
         history: [
           SpotHistory(
             id: '3',
+            spotId: '${pieceId}_spot_2',
+            practiceTimeMinutes: 8,
             result: SpotResult.failed,
             timestamp: now.subtract(const Duration(hours: 12)),
           ),
           SpotHistory(
             id: '4',
-            result: SpotResult.partial,
+            spotId: '${pieceId}_spot_2',
+            practiceTimeMinutes: 5,
+            result: SpotResult.struggled,
             timestamp: now.subtract(const Duration(days: 2)),
           ),
         ],
@@ -180,23 +196,33 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
         id: '${pieceId}_spot_3',
         pieceId: pieceId,
         title: 'Ending cadenza',
+        description: 'Well learned - maintenance only',
         pageNumber: 3,
-        position: const Offset(0.4, 0.7),
+        x: 0.4,
+        y: 0.7,
+        width: 0.2,
+        height: 0.1,
+        priority: SpotPriority.low,
+        readinessLevel: ReadinessLevel.review,
         color: SpotColor.green,
-        difficulty: 2,
-        note: 'Well learned - maintenance only',
+        createdAt: now.subtract(const Duration(days: 3)),
+        updatedAt: now.subtract(const Duration(hours: 24)),
         lastPracticed: now.subtract(const Duration(hours: 24)),
         nextDue: now.add(const Duration(days: 3)),
-        recommendedPracticeTime: const Duration(minutes: 2),
+        recommendedPracticeTime: 2, // minutes
         history: [
           SpotHistory(
             id: '5',
-            result: SpotResult.success,
+            spotId: '${pieceId}_spot_3',
+            practiceTimeMinutes: 2,
+            result: SpotResult.excellent,
             timestamp: now.subtract(const Duration(hours: 24)),
           ),
           SpotHistory(
             id: '6',
-            result: SpotResult.success,
+            spotId: '${pieceId}_spot_3',
+            practiceTimeMinutes: 3,
+            result: SpotResult.good,
             timestamp: now.subtract(const Duration(days: 3)),
           ),
         ],
@@ -208,55 +234,34 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
     return [
       Annotation(
         id: 'anno_1',
-        pageNumber: 1,
-        tool: AnnotationTool.highlighter,
-        vectorPaths: [
-          VectorPath(
-            type: VectorPathType.highlighter,
-            points: [
-              const Offset(0.2, 0.3),
-              const Offset(0.7, 0.3),
-              const Offset(0.7, 0.35),
-              const Offset(0.2, 0.35),
-            ],
-            strokeWidth: 3.0,
-          ),
-        ],
-        color: Colors.yellow.withOpacity(0.3),
-        strokeWidth: 3.0,
-        colorTag: ColorTag.technique,
+        pieceId: 'demo_piece_1',
+        page: 1,
         layerId: 'fingering',
-        timestamp: DateTime.now().subtract(const Duration(days: 5)),
+        colorTag: ColorTag.yellow,
+        tool: AnnotationTool.highlighter,
+        createdAt: DateTime.now().subtract(const Duration(days: 5)),
+        path: [
+          const Offset(0.2, 0.3),
+          const Offset(0.7, 0.3),
+          const Offset(0.7, 0.35),
+          const Offset(0.2, 0.35),
+        ],
+        bounds: const Rect.fromLTWH(0.2, 0.3, 0.5, 0.05),
       ),
       Annotation(
         id: 'anno_2',
-        pageNumber: 2,
-        tool: AnnotationTool.arrow,
-        vectorPaths: [
-          VectorPath(
-            type: VectorPathType.line,
-            points: [
-              const Offset(0.5, 0.4),
-              const Offset(0.6, 0.5),
-            ],
-            strokeWidth: 2.0,
-          ),
-          VectorPath(
-            type: VectorPathType.polygon,
-            points: [
-              const Offset(0.6, 0.5),
-              const Offset(0.58, 0.48),
-              const Offset(0.58, 0.52),
-            ],
-            strokeWidth: 2.0,
-          ),
-        ],
-        color: Colors.red,
-        strokeWidth: 2.0,
-        text: 'Watch tempo here!',
-        colorTag: ColorTag.tempo,
+        pieceId: 'demo_piece_1',
+        page: 2,
         layerId: 'performance',
-        timestamp: DateTime.now().subtract(const Duration(days: 2)),
+        colorTag: ColorTag.red,
+        tool: AnnotationTool.pen,
+        createdAt: DateTime.now().subtract(const Duration(days: 2)),
+        path: [
+          const Offset(0.5, 0.4),
+          const Offset(0.6, 0.5),
+        ],
+        text: 'Watch tempo here!',
+        bounds: const Rect.fromLTWH(0.5, 0.4, 0.1, 0.1),
       ),
     ];
   }
@@ -340,7 +345,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
             'Time Tracking & Analytics',
             'Comprehensive practice time tracking with weekly insights and achievements',
             Icons.schedule,
-            AppColors.accent,
+            AppColors.accentPurple,
           ),
           const SizedBox(height: 16),
           _buildFeatureCard(
@@ -546,8 +551,8 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
                     spacing: 8,
                     runSpacing: 8,
                     children: AnnotationTool.values.map((tool) => Chip(
-                      avatar: Icon(tool.icon, size: 16),
-                      label: Text(tool.displayName),
+                      avatar: Icon(_getAnnotationToolIcon(tool), size: 16),
+                      label: Text(_getAnnotationToolDisplayName(tool)),
                     )).toList(),
                   ),
                 ],
@@ -573,8 +578,8 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
                     spacing: 8,
                     runSpacing: 8,
                     children: ColorTag.values.map((tag) => Chip(
-                      backgroundColor: tag.color.withOpacity(0.2),
-                      label: Text(tag.displayName),
+                      backgroundColor: _getColorTagColor(tag).withValues(alpha: 0.2),
+                      label: Text(_getColorTagDisplayName(tag)),
                     )).toList(),
                   ),
                 ],
@@ -641,7 +646,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
   
   Widget _buildSRSProfileCard(SRSProfile profile) {
     return Card(
-      color: profile == SRSProfile.standard ? AppColors.primary.withOpacity(0.1) : null,
+      color: profile == SRSProfile.standard ? AppColors.primary.withValues(alpha: 0.1) : null,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
@@ -680,7 +685,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
   
   Widget _buildSpotScheduleCard(Spot spot) {
     final urgency = _srsService.calculateUrgencyScore(spot, concertDate: _demoProject.concertDate);
-    final nextDue = _srsService.calculateNextDue(spot, SpotResult.success, concertDate: _demoProject.concertDate);
+    final nextDue = _srsService.calculateNextDue(spot, SpotResult.excellent, concertDate: _demoProject.concertDate);
     
     return Card(
       child: Padding(
@@ -692,7 +697,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
               children: [
                 CircleAvatar(
                   radius: 8,
-                  backgroundColor: spot.color.uiColor,
+                  backgroundColor: spot.color.visualColor,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -770,7 +775,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: readinessLevel.color.withOpacity(0.2),
+                    color: readinessLevel.color.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -802,7 +807,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
   Widget _buildProjectReadinessCard() {
     final projectReadiness = _readinessService.calculateProjectReadiness(_demoProject, _demoPieces);
     final overallScore = projectReadiness['overallScore'] as double;
-    final level = projectReadiness['level'] as ReadinessLevel;
+    final level = projectReadiness['level'] as readiness_service.ReadinessLevel;
     final recommendations = projectReadiness['recommendations'] as List<String>;
     
     return Card(
@@ -842,7 +847,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: level.color.withOpacity(0.2),
+                color: level.color.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
@@ -1009,7 +1014,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.1),
+        color: AppColors.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -1081,13 +1086,13 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
             Row(
               children: [
                 Icon(
-                  annotation.tool.icon,
+                  _getAnnotationToolIcon(annotation.tool),
                   color: annotation.color,
                   size: 16,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  annotation.tool.displayName,
+                  _getAnnotationToolDisplayName(annotation.tool),
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const Spacer(),
@@ -1095,14 +1100,14 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: annotation.colorTag!.color.withOpacity(0.2),
+                      color: _getColorTagColor(annotation.colorTag).withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      annotation.colorTag!.displayName,
+                      _getColorTagDisplayName(annotation.colorTag),
                       style: TextStyle(
                         fontSize: 10,
-                        color: annotation.colorTag!.color,
+                        color: _getColorTagColor(annotation.colorTag),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -1118,7 +1123,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
             ],
             const SizedBox(height: 4),
             Text(
-              'Page ${annotation.pageNumber} • ${annotation.layerId} layer',
+              'Page ${annotation.page} • ${annotation.layerId} layer',
               style: TextStyle(fontSize: 10, color: Colors.grey[500]),
             ),
           ],
@@ -1153,6 +1158,67 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
       return 'In $difference days';
     } else {
       return '${-difference} days ago';
+    }
+  }
+
+  // Helper functions for missing enum getters
+  IconData _getAnnotationToolIcon(AnnotationTool tool) {
+    switch (tool) {
+      case AnnotationTool.pen:
+        return Icons.edit;
+      case AnnotationTool.highlighter:
+        return Icons.highlight;
+      case AnnotationTool.eraser:
+        return Icons.auto_fix_normal;
+      case AnnotationTool.text:
+        return Icons.text_fields;
+      case AnnotationTool.stamp:
+        return Icons.label;
+    }
+  }
+
+  String _getAnnotationToolDisplayName(AnnotationTool tool) {
+    switch (tool) {
+      case AnnotationTool.pen:
+        return 'Pen';
+      case AnnotationTool.highlighter:
+        return 'Highlighter';
+      case AnnotationTool.eraser:
+        return 'Eraser';
+      case AnnotationTool.text:
+        return 'Text';
+      case AnnotationTool.stamp:
+        return 'Stamp';
+    }
+  }
+
+  String _getColorTagDisplayName(ColorTag tag) {
+    switch (tag) {
+      case ColorTag.yellow:
+        return 'Dynamics';
+      case ColorTag.blue:
+        return 'Fingering';
+      case ColorTag.purple:
+        return 'Phrasing';
+      case ColorTag.red:
+        return 'Critical';
+      case ColorTag.green:
+        return 'Corrections';
+    }
+  }
+
+  Color _getColorTagColor(ColorTag tag) {
+    switch (tag) {
+      case ColorTag.yellow:
+        return Colors.yellow;
+      case ColorTag.blue:
+        return Colors.blue;
+      case ColorTag.purple:
+        return Colors.purple;
+      case ColorTag.red:
+        return Colors.red;
+      case ColorTag.green:
+        return Colors.green;
     }
   }
 }

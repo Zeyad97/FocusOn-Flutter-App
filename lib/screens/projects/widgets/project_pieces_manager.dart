@@ -248,7 +248,7 @@ class _ProjectPiecesManagerState extends ConsumerState<ProjectPiecesManager> {
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
-                                    '${(piece.readinessPercentage * 100).toInt()}% ready',
+                                    '${piece.readinessPercentage.toInt()}% ready',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 10,

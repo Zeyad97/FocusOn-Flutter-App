@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/spot.dart';
 
 /// App color constants based on the specification
 class AppColors {
@@ -32,6 +33,74 @@ class AppColors {
   // Gradient colors
   static const gradientStart = Color(0xFF8B5CF6);
   static const gradientEnd = Color(0xFFA855F7);
+
+  // Colorblind-friendly colors
+  static const colorblindRed = Color(0xFF9D0208);      // Dark red for critical spots
+  static const colorblindOrange = Color(0xFFFF6D00);   // Orange for review spots  
+  static const colorblindBlue = Color(0xFF0077BE);     // Blue for maintenance spots
+  static const colorblindPattern1 = Color(0xFF2E8B57); // Sea green alternative
+  static const colorblindPattern2 = Color(0xFF8B008B); // Dark magenta alternative
+  static const colorblindPattern3 = Color(0xFF4B0082); // Indigo alternative
+
+  /// Get spot color based on difficulty and colorblind mode
+  static Color getSpotColor(String difficulty, {bool colorblindMode = false}) {
+    if (colorblindMode) {
+      switch (difficulty.toLowerCase()) {
+        case 'hard':
+        case 'critical':
+          return colorblindRed;
+        case 'medium':
+        case 'review':
+          return colorblindOrange;
+        case 'easy':
+        case 'maintenance':
+          return colorblindBlue;
+        default:
+          return colorblindPattern1;
+      }
+    } else {
+      switch (difficulty.toLowerCase()) {
+        case 'hard':
+        case 'critical':
+          return spotRed;
+        case 'medium':
+        case 'review':
+          return spotYellow;
+        case 'easy':
+        case 'maintenance':
+          return spotGreen;
+        default:
+          return spotGreen;
+      }
+    }
+  }
+
+  /// Get spot color by SpotColor enum with colorblind mode support
+  static Color getSpotColorByEnum(SpotColor spotColor, {bool colorblindMode = false}) {
+    if (colorblindMode) {
+      switch (spotColor) {
+        case SpotColor.red:
+          return colorblindRed;      // Critical spots - Dark red
+        case SpotColor.yellow:
+          return colorblindOrange;   // Review spots - Orange  
+        case SpotColor.green:
+          return colorblindBlue;     // Maintenance spots - Blue
+        case SpotColor.blue:
+          return colorblindPattern1; // Mastered spots - Sea green
+      }
+    } else {
+      switch (spotColor) {
+        case SpotColor.red:
+          return spotRed;
+        case SpotColor.yellow:
+          return spotYellow;
+        case SpotColor.green:
+          return spotGreen;
+        case SpotColor.blue:
+          return Colors.blue;
+      }
+    }
+  }
 }
 
 /// Comprehensive theme system for FocusON Scores

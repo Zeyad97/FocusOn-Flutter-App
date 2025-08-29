@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
+import 'dart:convert';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/app_settings_provider.dart';
+import '../../services/database_service.dart';
+import '../../services/bluetooth_pedal_service.dart';
 import 'onboarding_view_screen.dart';
-import '../database_test_screen.dart';
+// Removed test screen imports for production
 
 // Providers for settings state management
 final darkModeProvider = StateNotifierProvider<DarkModeNotifier, bool>((ref) {
@@ -20,10 +26,6 @@ final autoSyncProvider = StateNotifierProvider<BoolSettingNotifier, bool>((ref) 
   return BoolSettingNotifier('auto_sync', true);
 });
 
-final practiceRemindersProvider = StateNotifierProvider<BoolSettingNotifier, bool>((ref) {
-  return BoolSettingNotifier('practice_reminders', true);
-});
-
 final soundEffectsProvider = StateNotifierProvider<BoolSettingNotifier, bool>((ref) {
   return BoolSettingNotifier('sound_effects', true);
 });
@@ -32,12 +34,8 @@ final defaultTempoProvider = StateNotifierProvider<DoubleSettingNotifier, double
   return DoubleSettingNotifier('default_tempo', 120.0);
 });
 
-final exportFormatProvider = StateNotifierProvider<StringSettingNotifier, String>((ref) {
-  return StringSettingNotifier('export_format', 'PDF');
-});
-
-final cloudStorageProvider = StateNotifierProvider<StringSettingNotifier, String>((ref) {
-  return StringSettingNotifier('cloud_storage', 'Google Drive');
+final colorblindModeProvider = StateNotifierProvider<BoolSettingNotifier, bool>((ref) {
+  return BoolSettingNotifier('colorblind_mode', false);
 });
 
 // New Settings Providers
@@ -190,11 +188,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final isDarkMode = ref.watch(darkModeProvider);
     final autoSync = ref.watch(autoSyncProvider);
-    final practiceReminders = ref.watch(practiceRemindersProvider);
     final soundEffects = ref.watch(soundEffectsProvider);
     final defaultTempo = ref.watch(defaultTempoProvider);
-    final exportFormat = ref.watch(exportFormatProvider);
-    final cloudStorage = ref.watch(cloudStorageProvider);
+    final colorblindMode = ref.watch(colorblindModeProvider);
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
       body: SafeArea(
@@ -252,40 +248,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
                     const SizedBox(height: 24),
 
-                    // Practice Settings
-                    _buildSettingsSection(
-                      'Practice',
-                      Icons.piano,
-                      [
-                        _buildSwitchTile(
-                          'Practice Reminders',
-                          'Get notified when spots are due for review',
-                          Icons.notifications,
-                          practiceReminders,
-                          (value) => ref.read(practiceRemindersProvider.notifier).toggle(),
-                        ),
-                        _buildSliderTile(
-                          'Default Metronome BPM',
-                          'Set your preferred starting tempo',
-                          Icons.speed,
-                          defaultTempo,
-                          60.0,
-                          200.0,
-                          (value) => ref.read(defaultTempoProvider.notifier).update(value),
-                        ),
-                        _buildDropdownTile(
-                          'Export Format',
-                          'Choose format for exported annotations',
-                          Icons.file_download,
-                          exportFormat,
-                          ['PDF', 'MIDI', 'MusicXML'],
-                          (value) => ref.read(exportFormatProvider.notifier).update(value!),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 24),
-
                     // Appearance Settings
                     _buildSettingsSection(
                       'Appearance',
@@ -310,37 +272,82 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           },
                         ),
                         _buildSwitchTile(
-                          'Sound Effects',
-                          'Enable audio feedback for interactions',
-                          Icons.volume_up,
-                          soundEffects,
-                          (value) => ref.read(soundEffectsProvider.notifier).toggle(),
+                          'Colorblind Accessibility',
+                          'Use high contrast colors and patterns for better visibility',
+                          Icons.accessibility,
+                          colorblindMode,
+                          (value) {
+                            ref.read(colorblindModeProvider.notifier).toggle();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  colorblindMode 
+                                    ? 'Colorblind mode disabled' 
+                                    : 'Colorblind mode enabled',
+                                ),
+                                backgroundColor: AppColors.primaryPurple,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
                         ),
+                        
+                        // Color preview when colorblind mode is enabled
+                        if (colorblindMode) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryPurple.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.primaryPurple.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Colorblind-Friendly Colors Active',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.primaryPurple,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Practice spot colors now use:',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    _buildColorPreview('Critical', AppColors.colorblindRed),
+                                    const SizedBox(width: 8),
+                                    _buildColorPreview('Review', AppColors.colorblindOrange),
+                                    const SizedBox(width: 8),
+                                    _buildColorPreview('Maintenance', AppColors.colorblindBlue),
+                                    const SizedBox(width: 8),
+                                    _buildColorPreview('Mastered', AppColors.colorblindPattern1),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
 
                     const SizedBox(height: 24),
 
-                    // Sync & Storage
+                    // Data Management
                     _buildSettingsSection(
-                      'Sync & Storage',
-                      Icons.cloud,
+                      'Data Management',
+                      Icons.storage,
                       [
-                        _buildSwitchTile(
-                          'Auto Sync',
-                          'Automatically backup your progress to the cloud',
-                          Icons.sync,
-                          autoSync,
-                          (value) => ref.read(autoSyncProvider.notifier).toggle(),
-                        ),
-                        _buildDropdownTile(
-                          'Cloud Storage',
-                          'Choose your preferred cloud storage provider',
-                          Icons.cloud_upload,
-                          cloudStorage,
-                          ['Google Drive', 'iCloud', 'Dropbox', 'OneDrive'],
-                          (value) => ref.read(cloudStorageProvider.notifier).update(value!),
-                        ),
                         _buildActionTile(
                           'Export Data',
                           'Export all your practice data and annotations',
@@ -424,26 +431,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const SizedBox(height: 24),
 
                     // Learning System Settings
-                    _buildSettingsSection(
-                      'Learning System',
-                      Icons.school,
-                      [
-                        _buildDropdownTile(
-                          'Learning Profile',
-                          'Choose your practice approach',
-                          Icons.person_outline,
-                          ref.watch(appSettingsProvider).learningProfile,
-                          ['Standard', 'Conservatory', 'Advanced'],
-                          (value) => ref.read(appSettingsProvider.notifier).updateLearningProfile(value!),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 24),
-
                     // Review Frequency Settings
                     _buildSettingsSection(
-                      'Review Frequency by Difficulty',
+                      'Review Frequency Difficulty',
                       Icons.repeat,
                       [
                         _buildFrequencySliderTile(
@@ -477,6 +467,63 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           AppColors.successGreen,
                         ),
                       ],
+                      infoButton: _buildInfoButton(
+                        'How Review Frequency Works',
+                        'The app uses Spaced Repetition System (SRS) to optimize your practice. Each spot color has a different review schedule:\n\n'
+                        '• Red spots: Need urgent attention, reviewed every few days\n'
+                        '• Yellow spots: Active practice, reviewed weekly\n'
+                        '• Green spots: Maintenance mode, reviewed every few weeks\n\n'
+                        'Lower numbers = more frequent reviews. Adjust based on your learning pace.'
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Bluetooth Pedal Settings
+                    _buildSettingsSection(
+                      'Bluetooth Pedal Support',
+                      Icons.pedal_bike_outlined,
+                      [
+                        Consumer(
+                          builder: (context, ref, child) {
+                            final pedalSettings = ref.watch(bluetoothPedalSettingsProvider);
+                            return _buildSwitchTile(
+                              'Enable Bluetooth Pedal',
+                              'Turn on Bluetooth pedal support for page navigation',
+                              Icons.bluetooth,
+                              pedalSettings.isEnabled,
+                              (value) {
+                                ref.read(bluetoothPedalSettingsProvider.notifier).toggleEnabled();
+                              },
+                            );
+                          },
+                        ),
+                        Consumer(
+                          builder: (context, ref, child) {
+                            final pedalSettings = ref.watch(bluetoothPedalSettingsProvider);
+                            return _buildSwitchTile(
+                              'Haptic Feedback',
+                              'Vibrate when pedal commands are received',
+                              Icons.vibration,
+                              pedalSettings.hapticFeedback,
+                              (value) {
+                                ref.read(bluetoothPedalSettingsProvider.notifier).toggleHapticFeedback();
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                      infoButton: _buildInfoButton(
+                        'Bluetooth Pedal Setup',
+                        'Connect a Bluetooth pedal for hands-free page turning during performance. Most Bluetooth pedals work by sending keyboard commands.\n\n'
+                        'Supported keys:\n'
+                        '• Page Up/Down\n'
+                        '• Arrow Keys\n'
+                        '• Space\n'
+                        '• F1-F5\n'
+                        '• Enter, Escape\n\n'
+                        'Enable haptic feedback to get vibration confirmation when pedal commands are received.'
+                      ),
                     ),
 
                     const SizedBox(height: 24),
@@ -513,22 +560,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
 
-                    const SizedBox(height: 24),
-
-                    // Developer Section
-                    _buildSettingsSection(
-                      'Developer',
-                      Icons.code,
-                      [
-                        _buildActionTile(
-                          'Test Database',
-                          'Test the new practice spots database system',
-                          Icons.storage,
-                          () => _testDatabase(),
-                        ),
-                      ],
-                    ),
-
                     const SizedBox(height: 32),
 
                     // Reset button
@@ -556,7 +587,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Widget _buildSettingsSection(String title, IconData icon, List<Widget> children) {
+  Widget _buildSettingsSection(String title, IconData icon, List<Widget> children, {Widget? infoButton}) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
@@ -608,6 +639,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     color: AppColors.primaryPurple,
                   ),
                 ),
+                if (infoButton != null) ...[
+                  const Spacer(),
+                  infoButton,
+                ],
               ],
             ),
           ),
@@ -700,14 +735,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Future<void> _testDatabase() async {
-    // Navigate to database test screen
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const DatabaseTestScreen(),
-      ),
-    );
-  }
+  // Test functions removed for production
 
   Widget _buildSwitchTile(
     String title,
@@ -951,69 +979,289 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  void _exportData() {
+  Future<void> _exportData() async {
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primaryPurple,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text('Exporting Data...'),
+            ],
+          ),
+          content: const Text('Please wait while we prepare your data for export.'),
+        ),
+      );
+
+      // Get database service
+      final databaseService = ref.read(databaseServiceProvider);
+      
+      // Export all data
+      final practiceSessionsData = await databaseService.getAllPracticeSessions();
+      final spotsData = await databaseService.getAllSpots();
+      final preferencesData = await _getAllPreferences();
+      
+      // Create export data map
+      final exportData = {
+        'export_date': DateTime.now().toIso8601String(),
+        'app_version': '1.0.0',
+        'practice_sessions': practiceSessionsData.map((session) => session.toJson()).toList(),
+        'spots': spotsData.map((spot) => spot.toJson()).toList(),
+        'preferences': preferencesData,
+      };
+
+      // Get app documents directory
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'music_app_backup_$timestamp.json';
+      final file = File(path.join(directory.path, fileName));
+      
+      // Write data to file
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(exportData),
+      );
+
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      // Show success dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.check_circle, color: AppColors.successGreen),
+                const SizedBox(width: 8),
+                const Text('Export Successful'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Your data has been exported successfully!'),
+                const SizedBox(height: 12),
+                Text(
+                  'File saved to:\n${file.path}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Exported data includes:\n• ${practiceSessionsData.length} practice sessions\n• ${spotsData.length} practice spots\n• App preferences and settings',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if open
+      if (mounted) Navigator.pop(context);
+      
+      // Show error dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.error, color: AppColors.errorRed),
+                const SizedBox(width: 8),
+                const Text('Export Failed'),
+              ],
+            ),
+            content: Text('Failed to export data: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _getAllPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys();
+    final preferencesData = <String, dynamic>{};
+    
+    for (final key in keys) {
+      final value = prefs.get(key);
+      preferencesData[key] = value;
+    }
+    
+    return preferencesData;
+  }
+
+  Future<void> _clearCache() async {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.download, color: AppColors.primaryPurple),
+            Icon(Icons.cleaning_services, color: AppColors.warningOrange),
             const SizedBox(width: 8),
-            const Text('Export Data'),
+            const Text('Clear Cache'),
           ],
         ),
-        content: const Text('This will export all your practice data, annotations, and settings to a backup file.'),
+        content: const Text(
+          'This will delete all temporary files, cached PDFs, and app cache. '
+          'Your practice data and settings will not be affected. Continue?'
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Row(
+              
+              // Show loading dialog
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => AlertDialog(
+                  title: Row(
                     children: [
-                      const Icon(Icons.check_circle, color: Colors.white),
-                      const SizedBox(width: 8),
-                      const Text('Practice data exported successfully!'),
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.primaryPurple,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text('Clearing Cache...'),
                     ],
                   ),
-                  backgroundColor: AppColors.primaryPurple,
-                  duration: const Duration(seconds: 3),
+                  content: const Text('Please wait while we clear temporary files.'),
                 ),
               );
+              
+              try {
+                int totalFilesDeleted = 0;
+                int totalSizeFreed = 0;
+                
+                // Clear app cache directory
+                final cacheDir = await getTemporaryDirectory();
+                if (await cacheDir.exists()) {
+                  final files = cacheDir.listSync(recursive: true);
+                  for (final file in files) {
+                    if (file is File) {
+                      final size = await file.length();
+                      totalSizeFreed += size;
+                      await file.delete();
+                      totalFilesDeleted++;
+                    }
+                  }
+                }
+                
+                // Clear file picker cache
+                final appDir = await getApplicationSupportDirectory();
+                final filePickerCache = Directory(path.join(appDir.path, 'file_picker'));
+                if (await filePickerCache.exists()) {
+                  final files = filePickerCache.listSync(recursive: true);
+                  for (final file in files) {
+                    if (file is File) {
+                      final size = await file.length();
+                      totalSizeFreed += size;
+                      await file.delete();
+                      totalFilesDeleted++;
+                    }
+                  }
+                }
+                
+                // Close loading dialog
+                if (mounted) Navigator.pop(context);
+                
+                // Show success message
+                if (mounted) {
+                  final sizeMB = (totalSizeFreed / (1024 * 1024)).toStringAsFixed(1);
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Row(
+                        children: [
+                          Icon(Icons.check_circle, color: AppColors.successGreen),
+                          const SizedBox(width: 8),
+                          const Text('Cache Cleared'),
+                        ],
+                      ),
+                      content: Text(
+                        'Successfully cleared cache!\n\n'
+                        '• $totalFilesDeleted files deleted\n'
+                        '• ${sizeMB}MB of storage freed',
+                      ),
+                      actions: [
+                        FilledButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Done'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              } catch (e) {
+                // Close loading dialog if open
+                if (mounted) Navigator.pop(context);
+                
+                // Show error
+                if (mounted) {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Row(
+                        children: [
+                          Icon(Icons.error, color: AppColors.errorRed),
+                          const SizedBox(width: 8),
+                          const Text('Clear Cache Failed'),
+                        ],
+                      ),
+                      content: Text('Failed to clear cache: $e'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              }
             },
-            child: const Text('Export'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _clearCache() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Clear Cache'),
-        content: const Text('This will delete all temporary files. Continue?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Cache cleared successfully'),
-                  backgroundColor: AppColors.successGreen,
-                ),
-              );
-            },
-            child: const Text('Clear'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.warningOrange),
+            child: const Text('Clear Cache'),
           ),
         ],
       ),
@@ -1116,11 +1364,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 await ref.read(darkModeProvider.notifier).toggle();
               }
               
-              await ref.read(practiceRemindersProvider.notifier).toggle();
-              if (!ref.read(practiceRemindersProvider)) {
-                await ref.read(practiceRemindersProvider.notifier).toggle();
-              }
-              
               await ref.read(autoSyncProvider.notifier).toggle();
               if (!ref.read(autoSyncProvider)) {
                 await ref.read(autoSyncProvider.notifier).toggle();
@@ -1133,8 +1376,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               
               // Reset other settings to defaults
               await ref.read(defaultTempoProvider.notifier).update(120.0);
-              await ref.read(exportFormatProvider.notifier).update('PDF');
-              await ref.read(cloudStorageProvider.notifier).update('Google Drive');
               
               // Reset new app settings
               await ref.read(appSettingsProvider.notifier).resetToDefaults();
@@ -1159,6 +1400,80 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             },
             style: FilledButton.styleFrom(backgroundColor: AppColors.errorRed),
             child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildColorPreview(String label, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Colors.white,
+              width: 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.3),
+                blurRadius: 3,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoButton(String title, String content) {
+    return GestureDetector(
+      onTap: () => _showInfoDialog(title, content),
+      child: Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          color: AppColors.primaryPurple.withOpacity(0.1),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: AppColors.primaryPurple.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Icon(
+          Icons.info_outline,
+          size: 16,
+          color: AppColors.primaryPurple,
+        ),
+      ),
+    );
+  }
+
+  void _showInfoDialog(String title, String content) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(content),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Got it'),
           ),
         ],
       ),

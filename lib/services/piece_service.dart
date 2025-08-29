@@ -1,119 +1,89 @@
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/piece.dart';
 import '../models/spot.dart';
 import 'spot_service.dart';
+import 'database_service.dart';
 
 class PieceService {
-  static Database? _database;
+  final DatabaseService _databaseService;
   
-  Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!;
-  }
-  
-  Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'pieces.db');
-    
-    return await openDatabase(
-      path,
-      version: 1,
-      onCreate: _createTables,
-    );
-  }
-  
-  Future<void> _createTables(Database db, int version) async {
-    await db.execute('''
-      CREATE TABLE pieces (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        composer TEXT NOT NULL,
-        keySignature TEXT,
-        difficulty INTEGER NOT NULL,
-        duration INTEGER,
-        tags TEXT,
-        concertDate TEXT,
-        lastOpened TEXT,
-        lastViewedPage INTEGER,
-        lastZoom REAL,
-        viewMode TEXT,
-        pdfFilePath TEXT NOT NULL,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        projectId TEXT,
-        metadata TEXT,
-        totalTimeSpent INTEGER DEFAULT 0,
-        thumbnailPath TEXT,
-        totalPages INTEGER DEFAULT 0,
-        targetTempo REAL,
-        currentTempo REAL
-      )
-    ''');
-    
-    await db.execute('CREATE INDEX idx_pieces_project ON pieces(projectId)');
-    await db.execute('CREATE INDEX idx_pieces_updated ON pieces(updatedAt)');
-  }
+  PieceService(this._databaseService);
   
   Future<void> savePiece(Piece piece) async {
-    final db = await database;
-    
     // Debug logging
     print('PieceService: Saving piece "${piece.title}" (id: ${piece.id})');
     
-    await db.insert(
-      'pieces',
-      _pieceToMap(piece),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    
-    print('PieceService: Piece saved successfully');
+    try {
+      await _databaseService.insertPiece(piece);
+      print('PieceService: Piece saved successfully to database');
+      
+      // Create a default practice spot if the piece has no spots
+      if (piece.spots.isEmpty) {
+        await _createDefaultSpot(piece);
+      }
+    } catch (e) {
+      if (e.toString().contains('has no column named')) {
+        print('PieceService: Database schema mismatch, recreating database...');
+        await _databaseService.recreateDatabase();
+        // Retry the insert
+        await _databaseService.insertPiece(piece);
+        print('PieceService: Piece saved successfully after database recreation');
+        
+        // Create default spot after successful save
+        if (piece.spots.isEmpty) {
+          await _createDefaultSpot(piece);
+        }
+      } else {
+        rethrow;
+      }
+    }
+  }
+  
+  Future<void> _createDefaultSpot(Piece piece) async {
+    try {
+      // Create a default "Full Piece" spot
+      final defaultSpot = Spot(
+        id: 'default_${piece.id}_${DateTime.now().millisecondsSinceEpoch}',
+        pieceId: piece.id,
+        title: 'Full Piece',
+        description: 'Practice the entire piece',
+        pageNumber: 1,
+        x: 0.0,
+        y: 0.0,
+        width: 1.0,
+        height: 1.0,
+        priority: SpotPriority.medium,
+        readinessLevel: ReadinessLevel.learning,
+        color: SpotColor.blue, // Default to practice (blue)
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      // Save the spot to database using DatabaseService
+      await _databaseService.insertSpot(defaultSpot);
+      print('PieceService: Created default practice spot for piece "${piece.title}"');
+    } catch (e) {
+      print('PieceService: Failed to create default spot: $e');
+      // Don't throw - spot creation is optional
+    }
   }
   
   Future<Piece?> getPiece(String id) async {
-    final db = await database;
-    final maps = await db.query(
-      'pieces',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    
-    if (maps.isEmpty) return null;
-    return _mapToPiece(maps.first);
+    return await _databaseService.getPieceById(id);
   }
   
   Future<List<Piece>> getAllPieces() async {
-    final db = await database;
-    final maps = await db.query(
-      'pieces',
-      orderBy: 'updatedAt DESC',
-    );
-    
-    return maps.map((map) => _mapToPiece(map)).toList();
+    return await _databaseService.getAllPieces();
   }
   
   Future<List<Piece>> getPiecesForProject(String projectId) async {
-    final db = await database;
-    final maps = await db.query(
-      'pieces',
-      where: 'projectId = ?',
-      whereArgs: [projectId],
-      orderBy: 'updatedAt DESC',
-    );
-    
-    return maps.map((map) => _mapToPiece(map)).toList();
+    final allPieces = await _databaseService.getAllPieces();
+    return allPieces.where((piece) => piece.projectId == projectId).toList();
   }
   
   Future<void> deletePiece(String id) async {
-    final db = await database;
-    await db.delete(
-      'pieces',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await _databaseService.deletePiece(id);
   }
   
   /// Get piece with calculated progress from spots
@@ -122,7 +92,7 @@ class PieceService {
     if (piece == null) return null;
     
     // Get spots for this piece
-    final spots = await spotService.getSpotsForPiece(id);
+    final spots = await _databaseService.getSpotsForPiece(id);
     
     // Create piece with real spots data
     return piece.copyWith(
@@ -136,155 +106,30 @@ class PieceService {
     final piecesWithProgress = <Piece>[];
     
     for (final piece in pieces) {
-      final spots = await spotService.getSpotsForPiece(piece.id);
-      piecesWithProgress.add(piece.copyWith(spots: spots));
+      final spots = await _databaseService.getSpotsForPiece(piece.id);
+      
+      // If piece has no spots, create a default one
+      if (spots.isEmpty) {
+        await _createDefaultSpot(piece);
+        // Reload spots after creating default spot
+        final updatedSpots = await _databaseService.getSpotsForPiece(piece.id);
+        piecesWithProgress.add(piece.copyWith(spots: updatedSpots));
+      } else {
+        piecesWithProgress.add(piece.copyWith(spots: spots));
+      }
     }
     
     return piecesWithProgress;
   }
   
-  /// Create initial sample pieces if database is empty
-  Future<void> createSamplePiecesIfEmpty() async {
+  /// Initialize piece service
+  Future<void> initializeService() async {
     final pieces = await getAllPieces();
-    if (pieces.isNotEmpty) return;
-    
-    final now = DateTime.now();
-    final samplePieces = [
-      Piece(
-        id: '1',
-        title: 'Nocturne in E-flat major',
-        composer: 'Frédéric Chopin',
-        keySignature: 'Eb major',
-        difficulty: 4,
-        pdfFilePath: 'assets/pdfs/chopin_nocturne.pdf',
-        spots: [],
-        createdAt: now.subtract(const Duration(days: 5)),
-        updatedAt: now.subtract(const Duration(days: 5)),
-        totalPages: 4,
-      ),
-      Piece(
-        id: '2',
-        title: 'Clair de Lune',
-        composer: 'Claude Debussy',
-        keySignature: 'Db major',
-        difficulty: 5,
-        pdfFilePath: 'assets/pdfs/debussy_clair.pdf',
-        spots: [],
-        createdAt: now.subtract(const Duration(days: 12)),
-        updatedAt: now.subtract(const Duration(days: 12)),
-        totalPages: 6,
-      ),
-      Piece(
-        id: '3',
-        title: 'Autumn Leaves',
-        composer: 'Joseph Kosma',
-        keySignature: 'Bb major',
-        difficulty: 2,
-        pdfFilePath: 'assets/pdfs/autumn_leaves.pdf',
-        spots: [],
-        createdAt: now.subtract(const Duration(days: 3)),
-        updatedAt: now.subtract(const Duration(days: 3)),
-        totalPages: 3,
-      ),
-      Piece(
-        id: '4',
-        title: 'Moonlight Sonata',
-        composer: 'Ludwig van Beethoven',
-        keySignature: 'C# minor',
-        difficulty: 4,
-        pdfFilePath: 'assets/pdfs/beethoven_moonlight.pdf',
-        spots: [],
-        createdAt: now.subtract(const Duration(days: 20)),
-        updatedAt: now.subtract(const Duration(days: 20)),
-        totalPages: 8,
-      ),
-      Piece(
-        id: '5',
-        title: 'The Girl from Ipanema',
-        composer: 'Antonio Carlos Jobim',
-        keySignature: 'F major',
-        difficulty: 1,
-        pdfFilePath: 'assets/pdfs/girl_ipanema.pdf',
-        spots: [],
-        createdAt: now.subtract(const Duration(days: 7)),
-        updatedAt: now.subtract(const Duration(days: 7)),
-        totalPages: 2,
-      ),
-      Piece(
-        id: '6',
-        title: 'Imagine',
-        composer: 'John Lennon',
-        keySignature: 'C major',
-        difficulty: 1,
-        pdfFilePath: 'assets/pdfs/imagine.pdf',
-        spots: [],
-        createdAt: now.subtract(const Duration(days: 1)),
-        updatedAt: now.subtract(const Duration(days: 1)),
-        totalPages: 3,
-      ),
-    ];
-    
-    for (final piece in samplePieces) {
-      await savePiece(piece);
-    }
-  }
-  
-  Map<String, dynamic> _pieceToMap(Piece piece) {
-    return {
-      'id': piece.id,
-      'title': piece.title,
-      'composer': piece.composer,
-      'keySignature': piece.keySignature,
-      'difficulty': piece.difficulty,
-      'duration': piece.duration,
-      'concertDate': piece.concertDate?.toIso8601String(),
-      'lastOpened': piece.lastOpened?.toIso8601String(),
-      'lastViewedPage': piece.lastViewedPage,
-      'lastZoom': piece.lastZoom,
-      'viewMode': piece.viewMode,
-      'pdfFilePath': piece.pdfFilePath,
-      'createdAt': piece.createdAt.toIso8601String(),
-      'updatedAt': piece.updatedAt.toIso8601String(),
-      'projectId': piece.projectId,
-      'metadata': piece.metadata?.toString(),
-      'totalTimeSpent': piece.totalTimeSpent.inMinutes,
-      'thumbnailPath': piece.thumbnailPath,
-      'totalPages': piece.totalPages,
-      'targetTempo': piece.targetTempo,
-      'currentTempo': piece.currentTempo,
-    };
-  }
-  
-  Piece _mapToPiece(Map<String, dynamic> map) {
-    return Piece(
-      id: map['id'],
-      title: map['title'],
-      composer: map['composer'],
-      keySignature: map['keySignature'],
-      difficulty: map['difficulty'],
-      duration: map['duration'],
-      concertDate: map['concertDate'] != null 
-          ? DateTime.parse(map['concertDate']) 
-          : null,
-      lastOpened: map['lastOpened'] != null 
-          ? DateTime.parse(map['lastOpened']) 
-          : null,
-      lastViewedPage: map['lastViewedPage'],
-      lastZoom: map['lastZoom'],
-      viewMode: map['viewMode'],
-      pdfFilePath: map['pdfFilePath'],
-      spots: [], // Loaded separately for performance
-      createdAt: DateTime.parse(map['createdAt']),
-      updatedAt: DateTime.parse(map['updatedAt']),
-      projectId: map['projectId'],
-      metadata: map['metadata'] != null ? {} : null,
-      totalTimeSpent: Duration(minutes: map['totalTimeSpent'] ?? 0),
-      thumbnailPath: map['thumbnailPath'],
-      totalPages: map['totalPages'] ?? 0,
-      targetTempo: map['targetTempo'],
-      currentTempo: map['currentTempo'],
-    );
+    debugPrint('PieceService: Initialized with ${pieces.length} pieces from database');
   }
 }
 
-final pieceServiceProvider = Provider<PieceService>((ref) => PieceService());
+final pieceServiceProvider = Provider<PieceService>((ref) {
+  final databaseService = ref.read(databaseServiceProvider);
+  return PieceService(databaseService);
+});

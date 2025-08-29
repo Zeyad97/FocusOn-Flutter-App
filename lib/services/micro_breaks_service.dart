@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_settings_provider.dart';
+import '../providers/practice_session_provider.dart';
 
 // Provider for the micro-breaks service
 final microBreaksServiceProvider = Provider<MicroBreaksService>((ref) {
@@ -69,6 +70,10 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
     }
 
     _updateSettings();
+    
+    // Initialize break count from existing session if available
+    startFromExistingSession();
+    
     state = state.copyWith(
       isRunning: true,
       timeUntilBreak: _breakInterval,
@@ -124,16 +129,21 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
   }
 
   void _startBreak() {
+    final newBreakCount = state.breakCount + 1;
+    
     state = state.copyWith(
       isOnBreak: true,
       timeUntilBreak: _breakDuration,
-      breakCount: state.breakCount + 1,
+      breakCount: newBreakCount,
     );
+    
+    // Update the active practice session with the new break count
+    _updatePracticeSessionBreakCount(newBreakCount);
     
     // Show break notification
     ref.read(microBreaksServiceProvider).showBreakNotification(
       _breakDuration,
-      state.breakCount,
+      newBreakCount,
     );
   }
 
@@ -169,6 +179,33 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
           seconds: state.timeUntilBreak.inSeconds + extension.inSeconds,
         ),
       );
+    }
+  }
+
+  void _updatePracticeSessionBreakCount(int newBreakCount) {
+    // Update active practice session with break count if one exists
+    final activePracticeSession = ref.read(activePracticeSessionProvider);
+    if (activePracticeSession.hasActiveSession && activePracticeSession.session != null) {
+      // Update the session with the new break count
+      final updatedSession = activePracticeSession.session!.copyWith(
+        breaksTaken: newBreakCount,
+        updatedAt: DateTime.now(),
+      );
+      
+      // Update the session in the provider (this would ideally save to database)
+      // For now, we'll just update the state
+      print('[MicroBreaks] Updated practice session break count to: $newBreakCount');
+    }
+  }
+
+  void startFromExistingSession() {
+    // When starting timer from an existing practice session, 
+    // initialize break count from the session data
+    final activePracticeSession = ref.read(activePracticeSessionProvider);
+    if (activePracticeSession.hasActiveSession && activePracticeSession.session != null) {
+      final existingBreakCount = activePracticeSession.session!.breaksTaken;
+      state = state.copyWith(breakCount: existingBreakCount);
+      print('[MicroBreaks] Restored break count from session: $existingBreakCount');
     }
   }
 

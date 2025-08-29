@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/spot_manager.dart';
 import '../models/practice_spot.dart';
+import '../models/spot.dart';
+import '../theme/app_theme.dart';
+import '../screens/settings/settings_screen.dart';
 
 /// Example widget showing how to integrate practice spots with PDF viewer
 /// This demonstrates the key integration points with your UI
@@ -465,12 +468,28 @@ class _PdfWithSpotsViewerState extends ConsumerState<PdfWithSpotsViewer> {
   // ====================================================================
 
   Color _getColorFromString(String colorName) {
+    final colorblindMode = ref.watch(colorblindModeProvider);
+    
+    SpotColor spotColor;
     switch (colorName.toLowerCase()) {
-      case 'red': return Colors.red;
-      case 'yellow': return Colors.orange;
-      case 'green': return Colors.green;
-      default: return Colors.red;
+      case 'red': 
+        spotColor = SpotColor.red;
+        break;
+      case 'yellow': 
+        spotColor = SpotColor.yellow;
+        break;
+      case 'green': 
+        spotColor = SpotColor.green;
+        break;
+      case 'blue':
+        spotColor = SpotColor.blue;
+        break;
+      default: 
+        spotColor = SpotColor.red;
+        break;
     }
+    
+    return AppColors.getSpotColorByEnum(spotColor, colorblindMode: colorblindMode);
   }
 }
 
@@ -567,12 +586,28 @@ class SpotOverlay extends StatelessWidget {
   }
 
   Color _getSpotColor(String colorName) {
+    final colorblindMode = ref.watch(colorblindModeProvider);
+    
+    SpotColor spotColor;
     switch (colorName.toLowerCase()) {
-      case 'red': return Colors.red;
-      case 'yellow': return Colors.orange;
-      case 'green': return Colors.green;
-      default: return Colors.red;
+      case 'red': 
+        spotColor = SpotColor.red;
+        break;
+      case 'yellow': 
+        spotColor = SpotColor.yellow;
+        break;
+      case 'green': 
+        spotColor = SpotColor.green;
+        break;
+      case 'blue':
+        spotColor = SpotColor.blue;
+        break;
+      default: 
+        spotColor = SpotColor.red;
+        break;
     }
+    
+    return AppColors.getSpotColorByEnum(spotColor, colorblindMode: colorblindMode);
   }
 }
 

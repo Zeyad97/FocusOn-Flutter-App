@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:flutter/foundation.dart';
 import '../models/practice_spot.dart';
+import '../models/annotation.dart';
 
 /// Simple and clean database helper for PDF practice spots
 /// Designed for easy extension with sync capabilities
@@ -372,5 +374,65 @@ class DBHelper {
     );
     
     return maps.map((map) => PracticeSpot.fromMap(map)).toList();
+  }
+
+  // ====================================================================
+  // ANNOTATION METHODS
+  // ====================================================================
+
+  /// Insert annotation (placeholder - needs table creation)
+  Future<void> insertAnnotation(dynamic annotation) async {
+    // TODO: Implement annotation table and insertion
+    debugPrint('DBHelper: insertAnnotation called - not yet implemented');
+  }
+
+  /// Get annotations for piece (placeholder)
+  Future<List<Annotation>> getAnnotationsForPiece(String pieceId) async {
+    // TODO: Implement annotation retrieval
+    debugPrint('DBHelper: getAnnotationsForPiece called - not yet implemented');
+    return <Annotation>[];
+  }
+
+  /// Update annotation (placeholder)
+  Future<void> updateAnnotation(dynamic annotation) async {
+    // TODO: Implement annotation update
+    debugPrint('DBHelper: updateAnnotation called - not yet implemented');
+  }
+
+  /// Delete annotation (placeholder)
+  Future<void> deleteAnnotation(String annotationId) async {
+    // TODO: Implement annotation deletion
+    debugPrint('DBHelper: deleteAnnotation called - not yet implemented');
+  }
+
+  /// Delete annotations for piece (placeholder)
+  Future<void> deleteAnnotationsForPiece(String pieceId) async {
+    // TODO: Implement bulk annotation deletion
+    debugPrint('DBHelper: deleteAnnotationsForPiece called - not yet implemented');
+  }
+
+  /// Insert annotation layer (placeholder)
+  Future<void> insertAnnotationLayer(dynamic layer) async {
+    // TODO: Implement layer insertion
+    debugPrint('DBHelper: insertAnnotationLayer called - not yet implemented');
+  }
+
+  /// Get annotation layers (placeholder)
+  Future<List<AnnotationLayer>> getAnnotationLayers() async {
+    // TODO: Implement layer retrieval
+    debugPrint('DBHelper: getAnnotationLayers called - not yet implemented');
+    return <AnnotationLayer>[];
+  }
+
+  /// Update annotation layer (placeholder)
+  Future<void> updateAnnotationLayer(dynamic layer) async {
+    // TODO: Implement layer update
+    debugPrint('DBHelper: updateAnnotationLayer called - not yet implemented');
+  }
+
+  /// Delete annotation layer (placeholder)
+  Future<void> deleteAnnotationLayer(String layerId) async {
+    // TODO: Implement layer deletion
+    debugPrint('DBHelper: deleteAnnotationLayer called - not yet implemented');
   }
 }

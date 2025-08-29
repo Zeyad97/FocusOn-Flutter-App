@@ -14,7 +14,7 @@ class LearningSystemService {
   LearningSystemService(this.ref);
 
   // Get practice recommendations based on learning profile
-  List<PracticeRecommendation> getPracticeRecommendations(List<Spot> spots, List<Piece> pieces) {
+  List<PracticeRecommendation> getPracticeRecommendations(List<Spot> spots, List<dynamic> pieces) {
     final profile = ref.read(appSettingsProvider).learningSystemProfile;
     final recommendations = <PracticeRecommendation>[];
 
@@ -34,7 +34,7 @@ class LearningSystemService {
     return recommendations;
   }
 
-  List<PracticeRecommendation> _getConservatoryRecommendations(List<Spot> spots, List<Piece> pieces) {
+  List<PracticeRecommendation> _getConservatoryRecommendations(List<Spot> spots, List<dynamic> pieces) {
     return [
       PracticeRecommendation(
         title: 'Technical Foundation',
@@ -63,7 +63,7 @@ class LearningSystemService {
     ];
   }
 
-  List<PracticeRecommendation> _getAdvancedRecommendations(List<Spot> spots, List<Piece> pieces) {
+  List<PracticeRecommendation> _getAdvancedRecommendations(List<Spot> spots, List<dynamic> pieces) {
     return [
       PracticeRecommendation(
         title: 'Challenging Spots',
@@ -92,7 +92,7 @@ class LearningSystemService {
     ];
   }
 
-  List<PracticeRecommendation> _getStandardRecommendations(List<Spot> spots, List<Piece> pieces) {
+  List<PracticeRecommendation> _getStandardRecommendations(List<Spot> spots, List<dynamic> pieces) {
     return [
       PracticeRecommendation(
         title: 'Daily Warm-up',

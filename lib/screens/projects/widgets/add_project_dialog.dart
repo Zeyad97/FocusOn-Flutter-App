@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/data_service.dart';
 import '../../../models/piece.dart';
 import '../../../providers/unified_library_provider.dart';
+import '../../../utils/feedback_system.dart';
 
 class AddProjectDialog extends ConsumerStatefulWidget {
   const AddProjectDialog({super.key});
@@ -432,6 +434,129 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
   }
 
   Future<void> _showAddPieceDialog() async {
+    // Show choice dialog: Import from tablet or create manual piece
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.music_note, color: AppColors.primaryPurple),
+            SizedBox(width: 8),
+            Text('Add Piece to Project'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'How would you like to add a piece?',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            SizedBox(height: 16),
+            ListTile(
+              leading: Icon(Icons.file_upload, color: AppColors.primaryPurple),
+              title: Text('Import from Device'),
+              subtitle: Text('Choose PDF file from your tablet/device'),
+              onTap: () => Navigator.pop(context, 'import'),
+            ),
+            ListTile(
+              leading: Icon(Icons.create, color: AppColors.primaryPurple),
+              title: Text('Create Manual Entry'),
+              subtitle: Text('Add piece details without PDF file'),
+              onTap: () => Navigator.pop(context, 'manual'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+
+    if (choice == 'import') {
+      await _importPieceFromDevice();
+    } else if (choice == 'manual') {
+      await _createManualPiece();
+    }
+  }
+
+  Future<void> _importPieceFromDevice() async {
+    try {
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Opening device file picker...'),
+            backgroundColor: AppColors.primaryPurple,
+          ),
+        );
+      }
+
+      // Import PDF file using file picker
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        
+        if (file.path != null) {
+          // Show dialog to get piece details
+          final pieceDetails = await _showPieceDetailsDialog();
+          
+          if (pieceDetails != null) {
+            final now = DateTime.now();
+            final newPiece = Piece(
+              id: 'imported_${now.millisecondsSinceEpoch}',
+              title: pieceDetails['title'] ?? file.name.replaceAll('.pdf', ''),
+              composer: pieceDetails['composer'] ?? 'Unknown Composer',
+              keySignature: pieceDetails['keySignature'],
+              difficulty: pieceDetails['difficulty'] ?? 3,
+              pdfFilePath: file.path!,
+              spots: [],
+              createdAt: now,
+              updatedAt: now,
+              totalPages: 1, // Will be updated when PDF is opened
+            );
+            
+            // Add to library
+            await ref.read(unifiedLibraryProvider.notifier).addPiece(newPiece);
+            
+            // Auto-select the newly imported piece for this project
+            setState(() {
+              _selectedPieceIds.add(newPiece.id);
+            });
+            
+            if (mounted) {
+              FeedbackSystem.showSuccess(
+                context,
+                'Imported "${newPiece.title}" and added to project!',
+                duration: Duration(seconds: 3),
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to import piece: $e'),
+            backgroundColor: AppColors.errorRed,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _createManualPiece() async {
     final pieceDetails = await _showPieceDetailsDialog();
     if (pieceDetails == null) return;
 
@@ -458,12 +583,10 @@ class _AddProjectDialogState extends ConsumerState<AddProjectDialog> {
       });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Piece "${newPiece.title}" created and added to project!'),
-            backgroundColor: AppColors.successGreen,
-            duration: Duration(seconds: 3),
-          ),
+        FeedbackSystem.showSuccess(
+          context,
+          'Created "${newPiece.title}" and added to project!',
+          duration: Duration(seconds: 3),
         );
       }
     } catch (e) {

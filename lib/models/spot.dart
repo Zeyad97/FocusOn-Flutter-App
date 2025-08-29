@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../theme/app_theme.dart';
 
 /// Priority levels for practice spots
 enum SpotPriority {
@@ -42,6 +44,16 @@ enum SpotColor {
     }
   }
 
+  /// Get priority weight for scheduling (higher = more urgent)
+  double get priorityWeight {
+    switch (this) {
+      case red: return 1.0;     // Highest priority
+      case yellow: return 0.7;  // High priority
+      case green: return 0.4;   // Medium priority
+      case blue: return 0.2;    // Low priority
+    }
+  }
+
   /// Get a readable description of the color's meaning
   String get description {
     switch (this) {
@@ -78,7 +90,6 @@ class Spot {
   final double easeFactor; // SRS ease factor (1.3+)
   final int interval; // SRS interval in days
   final int repetitions; // SRS repetition count
-  final int recommendedPracticeTime; // in minutes
   final bool isActive;
   final Map<String, dynamic>? metadata;
   // ScoreRead Pro SRS enhancements
@@ -89,6 +100,9 @@ class Spot {
   final SpotResult? lastResult; // Last practice result
   final DateTime? lastResultAt; // When last result was recorded
   final List<SpotHistory> history; // Practice history
+  
+  // Private field to store explicit practice time
+  final int? _recommendedPracticeTime;
 
   const Spot({
     required this.id,
@@ -114,7 +128,7 @@ class Spot {
     this.easeFactor = 2.5,
     this.interval = 1,
     this.repetitions = 0,
-    this.recommendedPracticeTime = 5,
+    int? recommendedPracticeTime,
     this.isActive = true,
     this.metadata,
     this.progressIndex = 0,
@@ -124,7 +138,78 @@ class Spot {
     this.lastResult,
     this.lastResultAt,
     this.history = const [],
-  });
+  }) : _recommendedPracticeTime = recommendedPracticeTime;
+
+  /// Calculate success rate as a percentage (0.0 to 1.0)
+  double get successRate {
+    if (practiceCount == 0) return 0.0;
+    return successCount / practiceCount;
+  }
+
+  /// Get difficulty level (1-5 scale, based on failure rate and other factors)
+  int get difficulty {
+    if (practiceCount == 0) return 3; // Default medium difficulty
+    
+    final failureRate = failureCount / practiceCount;
+    if (failureRate > 0.7) return 5; // Very hard
+    if (failureRate > 0.5) return 4; // Hard
+    if (failureRate > 0.3) return 3; // Medium
+    if (failureRate > 0.1) return 2; // Easy
+    return 1; // Very easy
+  }
+
+  /// Calculate recommended practice time based on spot properties
+  int get recommendedPracticeTime {
+    if (_recommendedPracticeTime != null) return _recommendedPracticeTime!;
+    
+    // Base time starts with difficulty level
+    int baseTime = 3 + difficulty; // 4-8 minutes base
+    
+    // Adjust based on color priority
+    switch (color) {
+      case SpotColor.red:
+        baseTime += 4; // Critical spots need more time
+        break;
+      case SpotColor.yellow:
+        baseTime += 2; // Learning spots need moderate time
+        break;
+      case SpotColor.green:
+        baseTime += 1; // Maintenance spots need less time
+        break;
+      case SpotColor.blue:
+        baseTime -= 1; // Nearly mastered spots need minimal time
+        break;
+    }
+    
+    // Adjust based on readiness level
+    switch (readinessLevel) {
+      case ReadinessLevel.newSpot:
+        baseTime += 3; // New spots need exploration time
+        break;
+      case ReadinessLevel.learning:
+        baseTime += 2; // Active learning needs time
+        break;
+      case ReadinessLevel.review:
+        baseTime += 0; // Review is standard
+        break;
+      case ReadinessLevel.mastered:
+        baseTime -= 2; // Mastered spots need quick review only
+        break;
+    }
+    
+    // Adjust based on recent practice success
+    if (practiceCount > 0) {
+      final successRate = successCount / practiceCount;
+      if (successRate < 0.4) {
+        baseTime += 3; // Struggling spots need more time
+      } else if (successRate > 0.8) {
+        baseTime -= 1; // Successful spots need less time
+      }
+    }
+    
+    // Ensure reasonable bounds (3-15 minutes)
+    return baseTime.clamp(3, 15);
+  }
 
   /// Create a copy with updated fields
   Spot copyWith({
@@ -181,7 +266,7 @@ class Spot {
       easeFactor: easeFactor ?? this.easeFactor,
       interval: interval ?? this.interval,
       repetitions: repetitions ?? this.repetitions,
-      recommendedPracticeTime: recommendedPracticeTime ?? this.recommendedPracticeTime,
+      recommendedPracticeTime: recommendedPracticeTime ?? this._recommendedPracticeTime,
       isActive: isActive ?? this.isActive,
       metadata: metadata ?? this.metadata,
       lastResult: lastResult ?? this.lastResult,
@@ -260,7 +345,6 @@ class Spot {
       easeFactor: json['easeFactor'] ?? 2.5,
       interval: json['interval'] ?? 1,
       repetitions: json['repetitions'] ?? 0,
-      recommendedPracticeTime: json['recommendedPracticeTime'] ?? 5,
       isActive: json['isActive'] ?? true,
       metadata: json['metadata'],
     );
@@ -336,6 +420,20 @@ enum SpotResult {
 
   const SpotResult(this.displayName);
   final String displayName;
+  
+  /// Get SRS multiplier for interval calculation
+  double get srsMultiplier {
+    switch (this) {
+      case SpotResult.failed:
+        return 0.5; // Reduce interval significantly
+      case SpotResult.struggled:
+        return 0.8; // Reduce interval moderately
+      case SpotResult.good:
+        return 1.0; // Maintain interval
+      case SpotResult.excellent:
+        return 1.3; // Increase interval
+    }
+  }
 }
 
 /// History record for spot practice

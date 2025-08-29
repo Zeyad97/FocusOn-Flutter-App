@@ -2,8 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/micro_breaks_service.dart';
 import '../services/learning_system_service.dart';
+import '../services/database_service.dart';
 import '../providers/app_settings_provider.dart';
+import '../providers/practice_session_provider.dart';
 import '../theme/app_theme.dart';
+
+// Provider for today's break statistics
+final todayBreakStatsProvider = FutureProvider<int>((ref) async {
+  final database = ref.read(databaseServiceProvider);
+  final sessions = await database.getTodayPracticeSessions();
+  
+  // Sum up breaks taken from all today's sessions
+  int totalBreaks = 0;
+  for (final session in sessions) {
+    totalBreaks += session.breaksTaken;
+  }
+  
+  // Add current session breaks if active
+  final activeSession = ref.read(activePracticeSessionProvider);
+  if (activeSession.hasActiveSession && activeSession.session != null) {
+    totalBreaks += activeSession.session!.breaksTaken;
+  }
+  
+  return totalBreaks;
+});
 
 class PracticeSessionWidget extends ConsumerWidget {
   const PracticeSessionWidget({super.key});
@@ -12,6 +34,7 @@ class PracticeSessionWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final timerState = ref.watch(practiceTimerProvider);
     final settings = ref.watch(appSettingsProvider);
+    final todayBreaksAsync = ref.watch(todayBreakStatsProvider);
     
     return Card(
       margin: const EdgeInsets.all(16),
@@ -28,15 +51,20 @@ class PracticeSessionWidget extends ConsumerWidget {
                   size: 24,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Practice Session',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+                Flexible(
+                  child: Text(
+                    'Practice Session',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : AppColors.textPrimary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 if (timerState.isRunning && settings.microBreaksEnabled)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -107,7 +135,11 @@ class PracticeSessionWidget extends ConsumerWidget {
                         ),
                         _buildTimerStat(
                           'Breaks Taken',
-                          '${timerState.breakCount}',
+                          todayBreaksAsync.when(
+                            data: (breakCount) => '$breakCount',
+                            loading: () => '${timerState.breakCount}',
+                            error: (_, __) => '${timerState.breakCount}',
+                          ),
                           AppColors.accentPurple,
                         ),
                       ],

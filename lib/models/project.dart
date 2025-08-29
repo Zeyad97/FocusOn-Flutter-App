@@ -59,7 +59,8 @@ class Project {
         0.0, 
         (sum, piece) => sum + piece.readinessPercentage
     );
-    return totalReadiness / projectPieces.length;
+    // Convert from percentage (0-100) to decimal (0.0-1.0) for progress bar
+    return (totalReadiness / projectPieces.length) / 100.0;
   }
 
   /// Get total spots across all pieces

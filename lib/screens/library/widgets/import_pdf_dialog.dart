@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/piece_service.dart';
+import '../../../services/database_service.dart';
 import '../../../models/piece.dart';
 
 /// Dialog for importing PDF files
@@ -77,7 +78,8 @@ class _ImportPDFDialogState extends State<ImportPDFDialog> {final _titleControll
     try {
       // Simulate processing the PDF
       await Future.delayed(const Duration(seconds: 2));// Import piece with song info like Lovable
-      final pieceService = PieceService();// Show import confirmation dialog
+      final databaseService = DatabaseService();
+      final pieceService = PieceService(databaseService);// Show import confirmation dialog
       await showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -102,17 +104,19 @@ class _ImportPDFDialogState extends State<ImportPDFDialog> {final _titleControll
       );
 
       final newPiece = Piece(
+        id: 'imported_${DateTime.now().millisecondsSinceEpoch}',
         title: _titleController.text.trim(),
         composer: _composerController.text.trim(),
         difficulty: _difficulty,
         duration: int.tryParse(_durationController.text.trim()) ?? 0,
         genre: _genreController.text.trim(),
-        filePath: _selectedFilePath!,
+        pdfFilePath: _selectedFilePath!,
         concertDate: _concertDate,
-        lastPracticed: null,
-        addedDate: DateTime.now(),
+        spots: [],
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
-      await pieceService.addPiece(newPiece);
+      await pieceService.savePiece(newPiece);
 
       if (mounted) {
         Navigator.of(context).pop(true); // Return success
@@ -129,9 +133,15 @@ class _ImportPDFDialogState extends State<ImportPDFDialog> {final _titleControll
                     children: [
                       const Text(
                         'PDF imported successfully!',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
-                      Text('${_titleController.text} is now in your library'),
+                      Text(
+                        '${_titleController.text} is now in your library',
+                        style: TextStyle(color: Colors.white),
+                      ),
                     ],
                   ),
                 ),
@@ -164,9 +174,15 @@ class _ImportPDFDialogState extends State<ImportPDFDialog> {final _titleControll
                     children: [
                       const Text(
                         'Import failed',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
-                      Text('Error: $e'),
+                      Text(
+                        'Error: $e',
+                        style: TextStyle(color: Colors.white),
+                      ),
                     ],
                   ),
                 ),
@@ -330,9 +346,9 @@ class _ImportPDFDialogState extends State<ImportPDFDialog> {final _titleControll
             
             const SizedBox(height: 16),
             
-            // Key signature field
+            // Duration field
             TextField(
-              controller: _keySignatureController,
+              controller: _durationController,
               decoration: const InputDecoration(labelText: 'Duration',
                 hintText: 'e.g., 5 minutes',
                 border: OutlineInputBorder(),

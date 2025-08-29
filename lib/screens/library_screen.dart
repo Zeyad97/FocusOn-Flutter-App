@@ -6,6 +6,8 @@ import '../models/piece.dart';
 import '../utils/animations.dart';
 import '../utils/feedback_system.dart';
 import '../widgets/enhanced_components.dart';
+import '../providers/unified_library_provider.dart';
+import '../providers/practice_provider.dart';
 import 'pdf_viewer/pdf_score_viewer.dart';
 import 'settings/settings_screen.dart';
 
@@ -70,95 +72,8 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
   }
 
   void _loadLibrary() {
-    // Load with beautiful demo pieces
-    state = [
-      MusicPiece(
-        id: '1',
-        title: 'Nocturne in E-flat major',
-        composer: 'Frédéric Chopin',
-        category: 'Classical',
-        dateAdded: DateTime.now().subtract(const Duration(days: 5)),
-        pages: 4,
-        practiceProgress: 0.85,
-        difficulty: 'Intermediate',
-        categoryColor: AppColors.primaryPurple,
-        isFavorite: true,
-        duration: '4:30',
-        key: 'E♭ major',
-        spotsCount: 8,
-      ),
-      MusicPiece(
-        id: '2',
-        title: 'Clair de Lune',
-        composer: 'Claude Debussy',
-        category: 'Classical',
-        dateAdded: DateTime.now().subtract(const Duration(days: 12)),
-        pages: 6,
-        practiceProgress: 0.92,
-        difficulty: 'Advanced',
-        categoryColor: AppColors.primaryPurple,
-        isFavorite: true,
-        duration: '5:15',
-        key: 'D♭ major',
-        spotsCount: 5,
-      ),
-      MusicPiece(
-        id: '3',
-        title: 'Autumn Leaves',
-        composer: 'Joseph Kosma',
-        category: 'Jazz',
-        dateAdded: DateTime.now().subtract(const Duration(days: 3)),
-        pages: 3,
-        practiceProgress: 0.67,
-        difficulty: 'Intermediate',
-        categoryColor: AppColors.warningOrange,
-        duration: '3:20',
-        key: 'G minor',
-        spotsCount: 12,
-      ),
-      MusicPiece(
-        id: '4',
-        title: 'Moonlight Sonata',
-        composer: 'Ludwig van Beethoven',
-        category: 'Classical',
-        dateAdded: DateTime.now().subtract(const Duration(days: 20)),
-        pages: 8,
-        practiceProgress: 0.73,
-        difficulty: 'Advanced',
-        categoryColor: AppColors.primaryPurple,
-        duration: '6:00',
-        key: 'C♯ minor',
-        spotsCount: 15,
-      ),
-      MusicPiece(
-        id: '5',
-        title: 'The Girl from Ipanema',
-        composer: 'Antonio Carlos Jobim',
-        category: 'Bossa Nova',
-        dateAdded: DateTime.now().subtract(const Duration(days: 7)),
-        pages: 2,
-        practiceProgress: 0.45,
-        difficulty: 'Beginner',
-        categoryColor: AppColors.successGreen,
-        duration: '2:45',
-        key: 'F major',
-        spotsCount: 3,
-      ),
-      MusicPiece(
-        id: '6',
-        title: 'Imagine',
-        composer: 'John Lennon',
-        category: 'Pop',
-        dateAdded: DateTime.now().subtract(const Duration(days: 1)),
-        pages: 3,
-        practiceProgress: 0.28,
-        difficulty: 'Beginner',
-        categoryColor: AppColors.errorRed,
-        duration: '3:03',
-        key: 'C major',
-        spotsCount: 2,
-      ),
-    ];
+    // Load pieces from data service - no hardcoded demo data
+    state = [];
   }
 
   void toggleFavorite(String pieceId) {
@@ -218,7 +133,6 @@ class LibraryScreen extends ConsumerStatefulWidget {
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen>
     with TickerProviderStateMixin {
-  String _selectedCategory = 'All';
   String _searchQuery = '';
   String _sortBy = 'Recently Added';
   late TextEditingController _searchController;
@@ -253,13 +167,52 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
 
   @override
   Widget build(BuildContext context) {
-    final pieces = ref.watch(libraryProvider);
+    final piecesAsync = ref.watch(unifiedLibraryProvider);
     final userName = ref.watch(userNameProvider);
-    final filteredPieces = _getFilteredPieces(pieces);
+    
+    return piecesAsync.when(
+      loading: () => Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.background,
+        body: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stack) => Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.background,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('Error loading library: $error'),
+              ElevatedButton(
+                onPressed: () => ref.refresh(unifiedLibraryProvider),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      data: (pieces) {
+        // Convert pieces to MusicPiece for UI compatibility
+        final musicPieces = pieces.map((piece) => MusicPiece(
+          id: piece.id,
+          title: piece.title,
+          composer: piece.composer,
+          category: 'Music',
+          dateAdded: piece.createdAt,
+          pages: piece.totalPages,
+          practiceProgress: 0.0, // TODO: Calculate from spots
+          difficulty: piece.difficulty.toString(),
+          categoryColor: _getCategoryColor('Music'),
+          isFavorite: false, // TODO: Implement favorites
+          duration: piece.metadata?['duration'],
+          key: piece.keySignature,
+          spotsCount: piece.spots.length,
+        )).toList();
+        
+        final filteredPieces = _getFilteredPieces(musicPieces);
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
-      body: SafeArea(
+        return Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.background,
+          body: SafeArea(
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
@@ -278,13 +231,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                     children: [
                       Text(
                         'Hi, $userName!',
-                        style: const TextStyle(
-                          color: Colors.white70,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
                           fontWeight: FontWeight.w500,
                           fontSize: 16,
                         ),
                       ),
-                      const Text(
+                      Text(
                         'Music Library',
                         style: TextStyle(
                           color: Colors.white,
@@ -413,8 +366,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                       index: 2,
                       child: Row(
                         children: [
-                          Expanded(child: _buildEnhancedCategoryFilter()),
-                          const SizedBox(width: 12),
+                          const Spacer(),
                           _buildEnhancedSortDropdown(),
                         ],
                       ),
@@ -457,16 +409,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
           ),
         ),
       ),
-    );
+        ); // Close the when statement
+      }, // Close the data case
+    ); // Close the when method
   }
 
   List<MusicPiece> _getFilteredPieces(List<MusicPiece> pieces) {
     var filtered = pieces;
-
-    // Filter by category
-    if (_selectedCategory != 'All') {
-      filtered = filtered.where((piece) => piece.category == _selectedCategory).toList();
-    }
 
     // Filter by search query
     if (_searchQuery.isNotEmpty) {
@@ -495,11 +444,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     return filtered;
   }
 
-  Widget _buildEnhancedQuickStats(List<MusicPiece> pieces) {
+  Widget _buildEnhancedQuickStats(List<Piece> pieces) {
     final totalPieces = pieces.length;
     final favorites = pieces.where((p) => p.isFavorite).length;
     final avgProgress = pieces.isEmpty ? 0.0 : 
-      pieces.map((p) => p.practiceProgress).reduce((a, b) => a + b) / pieces.length;
+      pieces.map((p) => p.readinessPercentage).reduce((a, b) => a + b) / pieces.length;
 
     return Row(
       children: [
@@ -526,7 +475,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
         Expanded(
           child: _buildEnhancedStatCard(
             'Avg Progress',
-            '${(avgProgress * 100).toInt()}%',
+            '${avgProgress.toInt()}%',
             Icons.trending_up,
             AppColors.successGreen,
             2,
@@ -582,10 +531,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                       title.contains('Progress') 
                           ? '${numberAnimation.toInt()}%' 
                           : '${numberAnimation.toInt()}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: Theme.of(context).brightness == Brightness.dark 
+                            ? Colors.white 
+                            : Theme.of(context).colorScheme.onSurface,
                       ),
                     );
                   },
@@ -593,10 +544,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                 const SizedBox(height: 4),
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
+                    color: Theme.of(context).brightness == Brightness.dark 
+                        ? Colors.white70 
+                        : Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -630,56 +583,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     );
   }
 
-  Widget _buildEnhancedCategoryFilter() {
-    final categories = ['All', 'Classical', 'Jazz', 'Pop', 'Bossa Nova'];
-    
-    return SizedBox(
-      height: 40,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: categories.length,
-        itemBuilder: (context, index) {
-          final category = categories[index];
-          final isSelected = _selectedCategory == category;
-          
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: TweenAnimationBuilder<double>(
-              duration: Duration(milliseconds: 300 + (index * 100)),
-              tween: Tween(begin: 0.0, end: 1.0),
-              builder: (context, animation, child) {
-                return Transform.scale(
-                  scale: animation,
-                  child: EnhancedCard(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    margin: EdgeInsets.zero,
-                    backgroundColor: isSelected 
-                        ? AppColors.primaryPurple 
-                        : Colors.white,
-                    onTap: () {
-                      FeedbackSystem.selection();
-                      setState(() {
-                        _selectedCategory = category;
-                      });
-                    },
-                    child: Text(
-                      category,
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : AppColors.textPrimary,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          );
-        },
-      ),
-    );
-  }
 
   Widget _buildEnhancedSortDropdown() {
     return EnhancedCard(
@@ -770,23 +673,73 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                   Positioned(
                     top: 8,
                     right: 8,
-                    child: GestureDetector(
-                      onTap: () {
-                        FeedbackSystem.light();
-                        ref.read(libraryProvider.notifier).toggleFavorite(piece.id);
+                    child: Consumer(
+                      builder: (context, ref, child) {
+                        final piecesAsync = ref.watch(unifiedLibraryProvider);
+                        return piecesAsync.when(
+                          data: (pieces) {
+                            // Find the corresponding Piece object from the provider
+                            final currentPiece = pieces.firstWhere(
+                              (p) => p.id == piece.id, 
+                              orElse: () => pieces.isNotEmpty ? pieces.first : Piece(
+                                id: piece.id,
+                                title: piece.title,
+                                composer: piece.composer,
+                                difficulty: 1,
+                                pdfFilePath: '',
+                                spots: [],
+                                createdAt: DateTime.now(),
+                                updatedAt: DateTime.now(),
+                                isFavorite: piece.isFavorite,
+                              ),
+                            );
+                            return GestureDetector(
+                              key: ValueKey('favorite_${piece.id}_${currentPiece.isFavorite}'),
+                              onTap: () {
+                                FeedbackSystem.light();
+                                ref.read(unifiedLibraryProvider.notifier).toggleFavorite(piece.id);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.9),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Builder(
+                                  builder: (context) {
+                                    print('LibraryScreen: Rendering heart for piece ${currentPiece.title} (${currentPiece.id}) - isFavorite: ${currentPiece.isFavorite}');
+                                    return Icon(
+                                      currentPiece.isFavorite ? Icons.favorite : Icons.favorite_border,
+                                      color: currentPiece.isFavorite 
+                                          ? AppColors.errorRed 
+                                          : (Theme.of(context).brightness == Brightness.dark 
+                                              ? Colors.white.withOpacity(0.7) 
+                                              : AppColors.textSecondary),
+                                      size: 16,
+                                    );
+                                  },
+                                ),
+                              ),
+                            );
+                          },
+                          loading: () => Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                          ),
+                          error: (err, stack) => Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.error, size: 16),
+                          ),
+                        );
                       },
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.9),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          piece.isFavorite ? Icons.favorite : Icons.favorite_border,
-                          color: piece.isFavorite ? AppColors.errorRed : AppColors.textSecondary,
-                          size: 16,
-                        ),
-                      ),
                     ),
                   ),
                   // Play button overlay
@@ -820,113 +773,122 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
             flex: 2,
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    piece.title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      piece.title,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    piece.composer,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (piece.duration != null || piece.key != null) ...[
                     const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        if (piece.duration != null) ...[
-                          Icon(Icons.access_time, size: 10, color: AppColors.textSecondary),
-                          const SizedBox(width: 2),
-                          Text(
-                            piece.duration!,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                        if (piece.duration != null && piece.key != null) ...[
-                          const SizedBox(width: 8),
-                          Text('•', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-                          const SizedBox(width: 8),
-                        ],
-                        if (piece.key != null) ...[
-                          Icon(Icons.music_note, size: 10, color: AppColors.textSecondary),
-                          const SizedBox(width: 2),
-                          Text(
-                            piece.key!,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                        const Spacer(),
-                        if (piece.spotsCount > 0) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: piece.spotsCount > 10 ? AppColors.errorRed.withOpacity(0.1) :
-                                     piece.spotsCount > 5 ? AppColors.warningOrange.withOpacity(0.1) :
-                                     AppColors.successGreen.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${piece.spotsCount} spots',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w500,
-                                color: piece.spotsCount > 10 ? AppColors.errorRed :
-                                       piece.spotsCount > 5 ? AppColors.warningOrange :
-                                       AppColors.successGreen,
+                    Text(
+                      piece.composer,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[300]
+                            : AppColors.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (piece.duration != null || piece.key != null) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          if (piece.duration != null) ...[
+                            Icon(Icons.access_time, size: 10, color: AppColors.textSecondary),
+                            const SizedBox(width: 2),
+                            Flexible(
+                              child: Text(
+                                piece.duration!,
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  color: AppColors.textSecondary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                          ),
+                          ],
+                          if (piece.duration != null && piece.key != null) ...[
+                            const SizedBox(width: 4),
+                            Text('•', style: TextStyle(fontSize: 9, color: AppColors.textSecondary)),
+                            const SizedBox(width: 4),
+                          ],
+                          if (piece.key != null) ...[
+                            Icon(Icons.music_note, size: 10, color: AppColors.textSecondary),
+                            const SizedBox(width: 2),
+                            Flexible(
+                              child: Text(
+                                piece.key!,
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  color: AppColors.textSecondary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                          const Spacer(),
+                          if (piece.spotsCount > 0) ...[
+                            Container(
+                              constraints: const BoxConstraints(maxWidth: 50),
+                              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
+                              decoration: BoxDecoration(
+                                color: piece.spotsCount > 10 ? AppColors.errorRed.withOpacity(0.1) :
+                                       piece.spotsCount > 5 ? AppColors.warningOrange.withOpacity(0.1) :
+                                       AppColors.successGreen.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '${piece.spotsCount} ${piece.spotsCount == 1 ? "spot" : "spots"}',
+                                style: TextStyle(
+                                  fontSize: 7,
+                                  fontWeight: FontWeight.w500,
+                                  color: piece.spotsCount > 10 ? AppColors.errorRed :
+                                         piece.spotsCount > 5 ? AppColors.warningOrange :
+                                         AppColors.successGreen,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
                     ),
                   ],
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
-                      EnhancedBadge(
-                        text: piece.difficulty,
-                        backgroundColor: piece.categoryColor.withOpacity(0.1),
-                        textColor: piece.categoryColor,
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      ),
                       const Spacer(),
                       Text(
                         '${piece.pages}p',
                         style: const TextStyle(
-                          fontSize: 10,
+                          fontSize: 9,
                           color: AppColors.textSecondary,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 2),
                   EnhancedProgressIndicator(
                     value: piece.practiceProgress,
-                    height: 4,
+                    height: 3,
                     gradient: LinearGradient(
                       colors: [piece.categoryColor, piece.categoryColor.withOpacity(0.7)],
                     ),
                   ),
                 ],
+                ),
               ),
             ),
           ),
@@ -1000,37 +962,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
           border: InputBorder.none,
           contentPadding: const EdgeInsets.all(16),
         ),
-      ),
-    );
-  }
-
-  Widget _buildCategoryFilter() {
-    final categories = ['All', 'Classical', 'Jazz', 'Pop', 'Bossa Nova'];
-    
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: categories.map((category) {
-          final isSelected = _selectedCategory == category;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilterChip(
-              label: Text(category),
-              selected: isSelected,
-              onSelected: (selected) {
-                setState(() {
-                  _selectedCategory = category;
-                });
-              },
-              selectedColor: AppColors.successGreen.withOpacity(0.2),
-              checkmarkColor: AppColors.successGreen,
-              labelStyle: TextStyle(
-                color: isSelected ? AppColors.successGreen : AppColors.textSecondary,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          );
-        }).toList(),
       ),
     );
   }
@@ -1117,13 +1048,55 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                     ),
                   ),
                   const Spacer(),
-                  IconButton(
-                    onPressed: () => ref.read(libraryProvider.notifier).toggleFavorite(piece.id),
-                    icon: Icon(
-                      piece.isFavorite ? Icons.favorite : Icons.favorite_border,
-                      color: piece.isFavorite ? AppColors.errorRed : AppColors.textSecondary,
-                      size: 20,
-                    ),
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final piecesAsync = ref.watch(unifiedLibraryProvider);
+                      return piecesAsync.when(
+                        data: (pieces) {
+                          // Find the corresponding Piece object from the provider
+                          final currentPiece = pieces.firstWhere(
+                            (p) => p.id == piece.id, 
+                            orElse: () => pieces.isNotEmpty ? pieces.first : Piece(
+                              id: piece.id,
+                              title: piece.title,
+                              composer: piece.composer,
+                              difficulty: 1,
+                              pdfFilePath: '',
+                              spots: [],
+                              createdAt: DateTime.now(),
+                              updatedAt: DateTime.now(),
+                              isFavorite: piece.isFavorite,
+                            ),
+                          );
+                          return IconButton(
+                            key: ValueKey('favorite_btn_${piece.id}_${currentPiece.isFavorite}'),
+                            onPressed: () => ref.read(unifiedLibraryProvider.notifier).toggleFavorite(piece.id),
+                            icon: Builder(
+                              builder: (context) {
+                                print('LibraryScreen: Rendering heart button for piece ${currentPiece.title} (${currentPiece.id}) - isFavorite: ${currentPiece.isFavorite}');
+                                return Icon(
+                                  currentPiece.isFavorite ? Icons.favorite : Icons.favorite_border,
+                                  color: currentPiece.isFavorite 
+                                      ? AppColors.errorRed 
+                                      : (Theme.of(context).brightness == Brightness.dark 
+                                          ? Colors.white.withOpacity(0.7) 
+                                          : AppColors.textSecondary),
+                                  size: 20,
+                                );
+                              },
+                            ),
+                          );
+                        },
+                        loading: () => const IconButton(
+                          onPressed: null,
+                          icon: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                        ),
+                        error: (err, stack) => const IconButton(
+                          onPressed: null,
+                          icon: Icon(Icons.error, size: 20),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1183,20 +1156,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
               ],
 
               const SizedBox(height: 12),
-
-              // Category and difficulty
-              Row(
-                children: [
-                  // Removed category tag for cleaner design
-                  Text(
-                    piece.difficulty,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
 
               const Spacer(),
 
@@ -1329,10 +1288,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
     try {
       FeedbackSystem.medium();
       
-      // Get the actual Piece object from the provider
-      final actualPiece = ref.read(piecesProvider.notifier).getPiece(piece.id);
+      // Get the actual Piece object from the unified library
+      final libraryState = ref.read(unifiedLibraryProvider);
+      if (!libraryState.hasValue) return;
       
-      if (actualPiece != null && actualPiece.pdfFilePath.isNotEmpty) {
+      final actualPiece = libraryState.value!.firstWhere(
+        (p) => p.id == piece.id,
+        orElse: () => throw Exception('Piece not found in library'),
+      );
+      
+      if (actualPiece.pdfFilePath.isNotEmpty) {
         print('LibraryScreen: Opening piece ${actualPiece.title} with path: ${actualPiece.pdfFilePath}');
         
         // Navigate with enhanced animation
@@ -1378,7 +1343,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
               children: [
                 Text('Composer: ${piece.composer}'),
                 const SizedBox(height: 8),
-                Text('Difficulty: ${piece.difficulty}'),
                 Text('Pages: ${piece.pages}'),
                 const SizedBox(height: 16),
                 Text(
@@ -1469,7 +1433,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24),
               child: Text(
-                'Filter & Sort',
+                'Sort Library',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -1484,34 +1448,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Category',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: ['All', 'Classical', 'Jazz', 'Pop', 'Bossa Nova']
-                          .map((category) => FilterChip(
-                                label: Text(category),
-                                selected: _selectedCategory == category,
-                                selectedColor: AppColors.primaryPurple.withOpacity(0.2),
-                                checkmarkColor: AppColors.primaryPurple,
-                                onSelected: (selected) {
-                                  setState(() {
-                                    _selectedCategory = category;
-                                  });
-                                  Navigator.pop(context);
-                                },
-                              ))
-                          .toList(),
-                    ),
-                    const SizedBox(height: 24),
                     const Text(
                       'Sort By',
                       style: TextStyle(
@@ -1820,128 +1756,170 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       final piece = await PDFScoreService.importPDFAsPiece();
       
       if (piece != null) {
-        // Store the actual Piece object
-        ref.read(piecesProvider.notifier).addPiece(piece);
+        // Show form to enter composer and difficulty
+        final pieceInfo = await _showPieceInfoDialog(piece.title);
+        
+        if (pieceInfo != null) {
+          // Update piece with user input
+          final updatedPiece = Piece(
+            id: piece.id,
+            title: piece.title,
+            composer: pieceInfo['composer'] ?? piece.composer,
+            difficulty: pieceInfo['difficulty'] ?? piece.difficulty,
+            totalPages: piece.totalPages,
+            createdAt: piece.createdAt,
+            updatedAt: DateTime.now(),
+            pdfFilePath: piece.pdfFilePath,
+            keySignature: piece.keySignature,
+            metadata: piece.metadata,
+            spots: [], // Initialize with empty spots list
+          );
 
-        // Create display MusicPiece for the UI
-        final musicPiece = MusicPiece(
-          id: piece.id,
-          title: piece.title,
-          composer: piece.composer,
-          category: 'Uncategorized',
-          dateAdded: piece.createdAt,
-          pages: piece.totalPages,
-          practiceProgress: 0.0,
-          difficulty: piece.difficulty.toString(),
-          categoryColor: _getCategoryColor('Uncategorized'),
-          isFavorite: false,
-          duration: piece.metadata?['duration'],
-          key: piece.metadata?['key'],
-          spotsCount: 0, // New pieces start with 0 spots
-        );
+          // Add to unified library (this automatically handles both database and UI)
+          await ref.read(unifiedLibraryProvider.notifier).addPiece(updatedPiece);
 
-        // Add the piece to the library state
-        ref.read(libraryProvider.notifier).addPiece(musicPiece);
+          // Refresh practice provider to include the new piece in practice dashboard
+          ref.read(practiceProvider.notifier).refresh();
 
-        // Show success popup like Lovable
-        if (mounted) {
-          await showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.successGreen.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      Icons.check_circle,
-                      color: AppColors.successGreen,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Piece Imported Successfully!',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+          // Show success popup
+          if (mounted) {
+            await showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                title: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.successGreen.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.check_circle,
+                        color: AppColors.successGreen,
+                        size: 24,
                       ),
                     ),
-                  ),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildInfoRow('Title:', piece.title),
-                  _buildInfoRow('Composer:', piece.composer),
-                  _buildInfoRow('Difficulty:', '${piece.difficulty}/5 stars'),
-                  if (piece.keySignature != null && piece.keySignature!.isNotEmpty)
-                    _buildInfoRow('Key:', piece.keySignature!),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryPurple.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: AppColors.primaryPurple,
-                          size: 16,
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Piece Imported Successfully!',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
-                        const SizedBox(width: 8),
-                        const Expanded(
-                          child: Text(
-                            'Your piece is now in your library! You can open it to add practice spots and start practicing.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildInfoRow('Title:', updatedPiece.title),
+                    _buildInfoRow('Composer:', updatedPiece.composer),
+                    if (updatedPiece.keySignature != null && updatedPiece.keySignature!.isNotEmpty)
+                      _buildInfoRow('Key:', updatedPiece.keySignature!),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryPurple.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: AppColors.primaryPurple,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'Your piece is now in your library! You can open it to add practice spots and start practicing.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      // Convert Piece to MusicPiece for _openPiece
+                      final musicPiece = MusicPiece(
+                        id: updatedPiece.id,
+                        title: updatedPiece.title,
+                        composer: updatedPiece.composer,
+                        category: 'Music',
+                        dateAdded: updatedPiece.createdAt,
+                        pages: updatedPiece.totalPages,
+                        practiceProgress: 0.0,
+                        difficulty: updatedPiece.difficulty.toString(),
+                        categoryColor: _getCategoryColor('Music'),
+                        isFavorite: false,
+                        duration: updatedPiece.metadata?['duration'],
+                        key: updatedPiece.keySignature,
+                        spotsCount: updatedPiece.spots.length,
+                      );
+                      _openPiece(musicPiece);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryPurple,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Open Piece'),
                   ),
                 ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    _openPiece(musicPiece);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryPurple,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Open Piece'),
-                ),
-              ],
-            ),
+            );
+          }
+
+          FeedbackSystem.showSuccess(
+            context,
+            'Successfully imported "${updatedPiece.title}"',
+            action: () {
+              // Convert Piece to MusicPiece for _openPiece
+              final musicPiece = MusicPiece(
+                id: updatedPiece.id,
+                title: updatedPiece.title,
+                composer: updatedPiece.composer,
+                category: 'Music',
+                dateAdded: updatedPiece.createdAt,
+                pages: updatedPiece.totalPages,
+                practiceProgress: 0.0,
+                difficulty: updatedPiece.difficulty.toString(),
+                categoryColor: _getCategoryColor('Music'),
+                isFavorite: false,
+                duration: updatedPiece.metadata?['duration'],
+                key: updatedPiece.keySignature,
+                spotsCount: updatedPiece.spots.length,
+              );
+              _openPiece(musicPiece);
+            },
+            actionLabel: 'Open',
+          );
+        } else {
+          // User cancelled the info dialog
+          FeedbackSystem.showWarning(
+            context,
+            'Import cancelled',
           );
         }
-
-        FeedbackSystem.showSuccess(
-          context,
-          'Successfully imported "${piece.title}"',
-          action: () => _openPiece(musicPiece),
-          actionLabel: 'Open',
-        );
       } else {
         FeedbackSystem.showWarning(
           context,
@@ -2090,6 +2068,171 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>?> _showPieceInfoDialog(String title) async {
+    final composerController = TextEditingController();
+    int selectedDifficulty = 3; // Default to medium difficulty
+
+    return await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryPurple.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.music_note,
+                      color: AppColors.primaryPurple,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Piece Information',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Title: $title',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Composer',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: composerController,
+                  decoration: InputDecoration(
+                    hintText: 'Enter composer name',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppColors.primaryPurple),
+                    ),
+                    prefixIcon: const Icon(Icons.person),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Difficulty Level',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryPurple.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.primaryPurple.withOpacity(0.2)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Easy'),
+                          Text('$selectedDifficulty/5'),
+                          const Text('Hard'),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Slider(
+                        value: selectedDifficulty.toDouble(),
+                        min: 1,
+                        max: 5,
+                        divisions: 4,
+                        activeColor: AppColors.primaryPurple,
+                        onChanged: (value) {
+                          setState(() {
+                            selectedDifficulty = value.round();
+                          });
+                        },
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(5, (index) {
+                          return Icon(
+                            index < selectedDifficulty ? Icons.star : Icons.star_border,
+                            color: AppColors.primaryPurple,
+                            size: 20,
+                          );
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(null),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop({
+                  'composer': composerController.text.trim().isEmpty 
+                      ? 'Unknown Composer' 
+                      : composerController.text.trim(),
+                  'difficulty': selectedDifficulty,
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryPurple,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
       ),
     );
   }

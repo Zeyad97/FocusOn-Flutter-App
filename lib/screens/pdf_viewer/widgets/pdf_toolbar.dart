@@ -5,6 +5,7 @@ import '../../../utils/feedback_system.dart';
 import '../../../utils/animations.dart';
 import '../../../widgets/enhanced_components.dart';
 import '../pdf_score_viewer.dart';
+import 'bookmark_manager.dart';
 
 /// Top toolbar for PDF Score Viewer with controls
 class PDFToolbar extends StatelessWidget {
@@ -153,10 +154,15 @@ class PDFToolbar extends StatelessWidget {
             onPressed: onSpotModeToggle,
           ),
           _ActionButton(
-            icon: isAnnotationMode ? Icons.edit : Icons.edit_off,
+            icon: Icons.bookmark,
+            label: 'Bookmarks',
+            onPressed: () => _showBookmarkManager(context),
+          ),
+          _ActionButton(
+            icon: Icons.edit,
             label: 'Annotate',
-            isActive: isAnnotationMode,
             onPressed: onAnnotationModeToggle,
+            isActive: isAnnotationMode,
           ),
           _ActionButton(
             icon: Icons.speed,
@@ -242,6 +248,19 @@ class PDFToolbar extends StatelessWidget {
             child: const Text('Search'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showBookmarkManager(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => BookmarkManager(
+        piece: piece,
+        currentPage: currentPage,
+        onNavigateToPage: onPageChanged,
       ),
     );
   }

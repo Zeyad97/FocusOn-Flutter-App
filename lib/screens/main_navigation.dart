@@ -169,11 +169,11 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
             final animation = _tabAnimationControllers[index];
             
             return Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeInOut,
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
                 decoration: BoxDecoration(
                   color: isSelected 
                       ? AppColors.primaryPurple.withOpacity(0.12) 
@@ -187,20 +187,20 @@ class _MainNavigationState extends ConsumerState<MainNavigation>
                       duration: const Duration(milliseconds: 200),
                       curve: Curves.easeInOut,
                       transform: Matrix4.identity()
-                        ..scale(isSelected ? 1.1 : 1.0),
+                        ..scale(isSelected ? 1.05 : 1.0),
                       child: Icon(
                         isSelected ? item.activeIcon : item.icon,
-                        size: 22,
+                        size: 20,
                         color: isSelected 
                             ? AppColors.primaryPurple 
                             : AppColors.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     AnimatedDefaultTextStyle(
                       duration: const Duration(milliseconds: 200),
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                         color: isSelected 
                             ? AppColors.primaryPurple 

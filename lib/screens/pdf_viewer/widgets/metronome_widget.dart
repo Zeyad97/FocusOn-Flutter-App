@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import '../../../theme/app_theme.dart';
+import '../../../services/audio_service.dart';
 
 /// Metronome widget with visual and haptic feedback
 class MetronomeWidget extends StatefulWidget {
@@ -27,6 +28,8 @@ class _MetronomeWidgetState extends State<MetronomeWidget>
   int _currentBeat = 0;
   Timer? _metronomeTimer;
   
+  final AudioService _audioService = AudioService();
+  
   late AnimationController _visualController;
   late AnimationController _pendulumController;
   late Animation<double> _scaleAnimation;
@@ -35,6 +38,9 @@ class _MetronomeWidgetState extends State<MetronomeWidget>
   @override
   void initState() {
     super.initState();
+    
+    // Initialize audio service
+    _audioService.initialize();
     
     _visualController = AnimationController(
       duration: const Duration(milliseconds: 100),
@@ -111,6 +117,9 @@ class _MetronomeWidgetState extends State<MetronomeWidget>
       _currentBeat = (_currentBeat + 1) % _timeSignature;
     });
     
+    // Audio feedback - accent on first beat
+    _audioService.playMetronomeClick(isAccent: _currentBeat == 0);
+    
     // Visual feedback
     _visualController.forward().then((_) {
       _visualController.reverse();
@@ -161,23 +170,20 @@ class _MetronomeWidgetState extends State<MetronomeWidget>
   Widget build(BuildContext context) {
     if (!widget.isVisible) return const SizedBox.shrink();
     
-    return Positioned(
-      bottom: 100,
-      right: 16,
-      child: Container(
-        width: 200,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+    return Container(
+      width: 200,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -360,7 +366,6 @@ class _MetronomeWidgetState extends State<MetronomeWidget>
             ),
           ],
         ),
-      ),
     );
   }
 

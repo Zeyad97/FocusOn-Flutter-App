@@ -7,10 +7,12 @@ import '../../models/practice_session.dart';
 import '../../services/data_service.dart';
 import '../../providers/practice_session_provider.dart';
 import '../../providers/unified_library_provider.dart';
+import '../../utils/snackbar_utils.dart';
 import '../practice/active_practice_session_screen.dart';
 import 'widgets/add_project_dialog.dart';
 import 'piece_management_screen.dart';
 import 'widgets/project_pieces_manager.dart';
+import '../settings/settings_screen.dart';
 
 /// Projects & Setlists screen integrated with actual music practice system
 class ProjectsScreen extends ConsumerStatefulWidget {
@@ -708,7 +710,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                             ),
                           ),
                           Text(
-                            '${(readiness * 100).toInt()}%',
+                            '${(readiness * 100).round()}%',
                             style: TextStyle(
                               fontSize: 12,
                               color: _getUrgencyColor(project.urgency),
@@ -1388,6 +1390,20 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
         SessionType.smart,
       );
 
+      // Check if a session was actually created
+      final practiceState = ref.read(activePracticeSessionProvider);
+      
+      if (practiceState.session == null || !practiceState.isActive) {
+        // No session was created - likely no spots available
+        if (mounted) {
+          SnackBarUtils.showWarning(
+            context, 
+            'No practice spots available! Please open your pieces in the score viewer and create practice spots first.'
+          );
+        }
+        return;
+      }
+
       if (mounted) {
         Navigator.push(
           context,
@@ -1442,19 +1458,40 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
   /// Get color based on piece difficulty level (1-5)
   Color _getDifficultyColor(int difficulty) {
-    switch (difficulty) {
-      case 1:
-        return AppColors.successGreen; // Beginner - Green
-      case 2:
-        return AppColors.lightPurple; // Easy - Light Purple
-      case 3:
-        return AppColors.accentPurple; // Intermediate - Medium Purple  
-      case 4:
-        return AppColors.warningOrange; // Advanced - Orange
-      case 5:
-        return AppColors.errorRed; // Expert - Red
-      default:
-        return AppColors.accentPurple; // Default to intermediate
+    final colorblindMode = ref.watch(colorblindModeProvider);
+    
+    if (colorblindMode) {
+      // Use colorblind-friendly color scheme
+      switch (difficulty) {
+        case 1:
+          return AppColors.colorblindBlue; // Beginner - Blue
+        case 2:
+          return AppColors.colorblindPattern1; // Easy - Sea Green
+        case 3:
+          return AppColors.colorblindPattern3; // Intermediate - Indigo  
+        case 4:
+          return AppColors.colorblindOrange; // Advanced - Orange
+        case 5:
+          return AppColors.colorblindRed; // Expert - Dark Red
+        default:
+          return AppColors.colorblindPattern3; // Default to indigo
+      }
+    } else {
+      // Use standard color scheme
+      switch (difficulty) {
+        case 1:
+          return AppColors.successGreen; // Beginner - Green
+        case 2:
+          return AppColors.lightPurple; // Easy - Light Purple
+        case 3:
+          return AppColors.accentPurple; // Intermediate - Medium Purple  
+        case 4:
+          return AppColors.warningOrange; // Advanced - Orange
+        case 5:
+          return AppColors.errorRed; // Expert - Red
+        default:
+          return AppColors.accentPurple; // Default to intermediate
+      }
     }
   }
 }

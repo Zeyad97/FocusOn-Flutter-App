@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../../providers/practice_session_provider.dart';
+import '../../providers/unified_library_provider.dart';
 import '../../models/practice_session.dart';
 import '../../models/spot.dart';
+import '../../models/piece.dart';
+import '../../models/pdf_document.dart';
+import '../../theme/app_theme.dart';
+import '../../screens/pdf_viewer/pdf_score_viewer.dart';
 
 class ActivePracticeSessionScreen extends ConsumerStatefulWidget {
   const ActivePracticeSessionScreen({super.key});
@@ -63,8 +68,11 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
     final currentSpot = practiceState.currentSpot;
 
     return Scaffold(
+      extendBodyBehindAppBar: false,
       appBar: AppBar(
         title: Text(session.name),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        elevation: 0,
         actions: [
           IconButton(
             icon: Icon(practiceState.isRunning ? Icons.pause : Icons.play_arrow),
@@ -84,9 +92,11 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
           ),
         ],
       ),
-      body: currentSpot == null 
-        ? _buildSessionComplete(session)
-        : _buildPracticeInterface(session, currentSpot, practiceNotifier),
+      body: SafeArea(
+        child: currentSpot == null 
+          ? _buildSessionComplete(session)
+          : _buildPracticeInterface(session, currentSpot, practiceNotifier),
+      ),
     );
   }
 
@@ -94,206 +104,276 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
     final colorScheme = Theme.of(context).colorScheme;
     final progress = (session.spotSessions.indexOf(currentSpot) + 1) / session.spotSessions.length;
 
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Progress indicator
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+    return Column(
+      children: [
+        // Compact top bar with progress and controls
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+          ),
+          child: Column(
+            children: [
+              // Progress indicator
+              Row(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Progress',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        '${session.spotSessions.indexOf(currentSpot) + 1} / ${session.spotSessions.length}',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    'Progress: ${session.spotSessions.indexOf(currentSpot) + 1} / ${session.spotSessions.length}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(
-                    value: progress,
-                    backgroundColor: colorScheme.surfaceVariant,
-                    valueColor: AlwaysStoppedAnimation(colorScheme.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: colorScheme.surfaceVariant,
+                      valueColor: AlwaysStoppedAnimation(colorScheme.primary),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    _formatDuration(_sessionElapsed),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // Time display
-          Row(
-            children: [
-              Expanded(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        Text(
-                          'Session Time',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _formatDuration(_sessionElapsed),
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.primary,
-                          ),
-                        ),
-                      ],
+              const SizedBox(height: 12),
+              
+              // Practice action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _completeSpot(notifier, SpotResult.failed),
+                      icon: const Icon(Icons.close, size: 16),
+                      label: const Text('Failed'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _completeSpot(notifier, SpotResult.struggled),
+                      icon: const Icon(Icons.warning, size: 16),
+                      label: const Text('Struggled'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.orange,
+                        side: const BorderSide(color: Colors.orange),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _completeSpot(notifier, SpotResult.good),
+                      icon: const Icon(Icons.check, size: 16),
+                      label: const Text('Good'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.green,
+                        side: const BorderSide(color: Colors.green),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _showSolvedSpotDialog(notifier),
+                      icon: const Icon(Icons.star, size: 16),
+                      label: const Text('Solved'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        
+        // PDF viewer with spot highlighting
+        Expanded(
+          child: _buildPDFViewer(currentSpot),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPDFViewer(SpotSession currentSpot) {
+    final piecesAsync = ref.watch(unifiedLibraryProvider);
+    
+    return piecesAsync.when(
+      data: (pieces) {
+        // Find the piece for the current spot
+        Piece? currentPiece;
+        try {
+          currentPiece = pieces.firstWhere((piece) => 
+            piece.spots.any((spot) => spot.id == currentSpot.spotId));
+        } catch (e) {
+          // Spot not found in any piece
+        }
+        
+        if (currentPiece == null) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.music_off,
+                  size: 64,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Musical score not available',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Practicing spot: ${_getSpotName(currentSpot.spotId)}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        
+        // Find the current spot details
+        final currentSpotDetails = currentPiece.spots.firstWhere(
+          (spot) => spot.id == currentSpot.spotId,
+          orElse: () => currentPiece!.spots.first,
+        );
+        
+        // Display PDF viewer or open full PDF viewer
+        return Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          margin: const EdgeInsets.all(8),
+          child: Column(
+            children: [
+              // PDF header with piece info
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(8),
+                    topRight: Radius.circular(8),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.music_note,
+                      color: AppColors.getSpotColorByEnum(currentSpotDetails.color),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            currentPiece.title,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            'Spot: ${(currentSpotDetails.description?.isNotEmpty == true) ? currentSpotDetails.description : "Page ${currentSpotDetails.pageNumber}"}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    FilledButton.icon(
+                      onPressed: currentPiece != null ? () => _openFullPDFViewer(currentPiece!) : null,
+                      icon: const Icon(Icons.open_in_full, size: 16),
+                      label: const Text('Open Score'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
+              
+              // PDF preview or placeholder
               Expanded(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        Text(
-                          'Current Spot',
-                          style: Theme.of(context).textTheme.bodyMedium,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.picture_as_pdf,
+                        size: 64,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Musical Score Available',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _formatDuration(_spotElapsed),
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.secondary,
-                          ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tap "Open Score" to view the full sheet music\nwith highlighted practice spots',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ],
           ),
-          
-          const SizedBox(height: 24),
-          
-          // Current spot info
-          Expanded(
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Current Spot',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Spot details (we'll need to get these from the spot ID)
-                    _buildSpotInfo(currentSpot),
-                    
-                    const Spacer(),
-                    
-                    // Practice instructions
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primaryContainer.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Practice Instructions:',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Focus on accuracy and clean technique. Practice slowly first, then gradually increase tempo.',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // Action buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _completeSpot(notifier, SpotResult.failed),
-                            icon: const Icon(Icons.close),
-                            label: const Text('Failed'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              side: const BorderSide(color: Colors.red),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _completeSpot(notifier, SpotResult.struggled),
-                            icon: const Icon(Icons.warning),
-                            label: const Text('Struggled'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.orange,
-                              side: const BorderSide(color: Colors.orange),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _completeSpot(notifier, SpotResult.good),
-                            icon: const Icon(Icons.check),
-                            label: const Text('Good'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.green,
-                              side: const BorderSide(color: Colors.green),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _showSolvedSpotDialog(notifier),
-                            icon: const Icon(Icons.star),
-                            label: const Text('Solved'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green.shade700,
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+        );
+      },
+      loading: () => const Center(
+        child: CircularProgressIndicator(),
+      ),
+      error: (error, stackTrace) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading musical score',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Theme.of(context).colorScheme.error,
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -381,7 +461,18 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
         ],
       ),
     );
-  }void _completeSpot(ActivePracticeSessionNotifier notifier, SpotResult result) {
+  }
+
+  void _openFullPDFViewer(Piece piece) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PDFScoreViewer(piece: piece),
+      ),
+    );
+  }
+
+  void _completeSpot(ActivePracticeSessionNotifier notifier, SpotResult result) {
     notifier.completeCurrentSpot(result);
     setState(() {
       _spotElapsed = Duration.zero; // Reset spot timer

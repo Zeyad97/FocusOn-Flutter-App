@@ -27,6 +27,8 @@ class Piece {
   final int totalPages; // PDF page count
   final double? targetTempo; // Optional tempo target for readiness
   final double? currentTempo; // Current achieved tempo
+  final bool isFavorite; // Favorite flag
+  final List<String> tags; // Tags for categorization and search
   
   Piece({
     required this.id,
@@ -52,6 +54,8 @@ class Piece {
     this.totalPages = 0,
     this.targetTempo,
     this.currentTempo,
+    this.isFavorite = false,
+    this.tags = const [],
   });
 
   /// Get PDF file handle
@@ -86,10 +90,15 @@ class Piece {
 
   /// Calculate overall readiness percentage (0-100)
   double get readinessPercentage {
-    if (spots.isEmpty) return 100.0;
+    if (spots.isEmpty) {
+      print('DEBUG: Piece "$title" (id: $id) has no spots - returning 0%');
+      return 0.0; // No spots means not ready, not 100% ready
+    }
     
     final greenCount = maintenanceSpots.length;
-    return (greenCount / spots.length) * 100;
+    final percentage = (greenCount / spots.length) * 100;
+    print('DEBUG: Piece "$title" (id: $id) has ${spots.length} spots, ${greenCount} green - readiness: ${percentage.toInt()}%');
+    return percentage;
   }
 
   /// Get urgency score for smart practice selection (0.0-1.0)
@@ -162,6 +171,7 @@ class Piece {
     int? totalPages,
     double? targetTempo,
     double? currentTempo,
+    bool? isFavorite,
   }) {
     return Piece(
       id: id,
@@ -187,6 +197,7 @@ class Piece {
       totalPages: totalPages ?? this.totalPages,
       targetTempo: targetTempo ?? this.targetTempo,
       currentTempo: currentTempo ?? this.currentTempo,
+      isFavorite: isFavorite ?? this.isFavorite,
     );
   }
 
@@ -202,11 +213,21 @@ class Piece {
       'duration': duration,
       'concert_date': concertDate?.millisecondsSinceEpoch,
       'last_opened': lastOpened?.millisecondsSinceEpoch,
+      'last_viewed_page': lastViewedPage,
+      'last_zoom': lastZoom,
+      'view_mode': viewMode,
       'pdf_file_path': pdfFilePath,
       'created_at': createdAt.millisecondsSinceEpoch,
       'updated_at': updatedAt.millisecondsSinceEpoch,
       'project_id': projectId,
       'metadata': metadata,
+      'total_time_spent': totalTimeSpent.inMinutes,
+      'thumbnail_path': thumbnailPath,
+      'total_pages': totalPages,
+      'target_tempo': targetTempo,
+      'current_tempo': currentTempo,
+      'is_favorite': isFavorite ? 1 : 0,
+      'tags': tags.join(','), // Store as comma-separated string
     };
   }
 
@@ -226,12 +247,24 @@ class Piece {
       lastOpened: json['last_opened'] != null
           ? DateTime.fromMillisecondsSinceEpoch(json['last_opened'])
           : null,
+      lastViewedPage: json['last_viewed_page'],
+      lastZoom: json['last_zoom']?.toDouble(),
+      viewMode: json['view_mode'],
       pdfFilePath: json['pdf_file_path'],
       spots: [], // Spots loaded separately for performance
       createdAt: DateTime.fromMillisecondsSinceEpoch(json['created_at']),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(json['updated_at']),
       projectId: json['project_id'],
-      metadata: json['metadata'] != null ? Map<String, dynamic>.from(json['metadata']) : null,
+      metadata: json['metadata'],
+      totalTimeSpent: Duration(minutes: json['total_time_spent'] ?? 0),
+      thumbnailPath: json['thumbnail_path'],
+      totalPages: json['total_pages'] ?? 0,
+      targetTempo: json['target_tempo'],
+      currentTempo: json['current_tempo'],
+      isFavorite: json['is_favorite'] == 1 || json['is_favorite'] == true,
+      tags: json['tags'] != null && json['tags'].isNotEmpty 
+        ? json['tags'].split(',').map((tag) => tag.trim()).toList()
+        : [],
     );
   }
 

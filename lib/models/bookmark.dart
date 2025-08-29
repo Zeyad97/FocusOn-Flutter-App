@@ -23,6 +23,16 @@ class Bookmark {
     };
   }
 
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'pdf_id': pdfId,
+      'page_number': pageNumber,
+      'note': note,
+      'created_at': createdAt.millisecondsSinceEpoch,
+    };
+  }
+
   factory Bookmark.fromJson(Map<String, dynamic> json) {
     return Bookmark(
       id: json['id'],
@@ -30,6 +40,16 @@ class Bookmark {
       pageNumber: json['pageNumber'],
       note: json['note'] ?? '',
       createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt']),
+    );
+  }
+
+  factory Bookmark.fromMap(Map<String, dynamic> map) {
+    return Bookmark(
+      id: map['id'],
+      pdfId: map['pdf_id'],
+      pageNumber: map['page_number'],
+      note: map['note'] ?? '',
+      createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at']),
     );
   }
 }

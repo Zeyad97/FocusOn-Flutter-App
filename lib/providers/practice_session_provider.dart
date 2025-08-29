@@ -2,8 +2,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/practice_session.dart';
 import '../models/project.dart';
 import '../models/spot.dart';
+import '../models/piece.dart';
 import '../services/data_service.dart';
+import '../services/spot_service.dart';
+import '../services/database_service.dart';
 import '../services/ai_practice_selector.dart';
+import 'unified_library_provider.dart';
+import 'practice_provider.dart';
 
 // Real practice session state
 class ActivePracticeSessionState {
@@ -59,8 +64,11 @@ class ActivePracticeSessionState {
 // Real AI-powered practice session notifier
 class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionState> {
   final DataService _dataService;
+  final SpotService _spotService;
+  final DatabaseService _databaseService;
+  final Ref _ref;
   
-  ActivePracticeSessionNotifier(this._dataService) : super(const ActivePracticeSessionState());
+  ActivePracticeSessionNotifier(this._dataService, this._spotService, this._databaseService, this._ref) : super(const ActivePracticeSessionState());
 
   /// Start practice session using REAL AI logic and data
   Future<void> startProjectPracticeSession(String projectName, SessionType sessionType) async {
@@ -69,15 +77,58 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       
       // Get real data including practice history
       final projects = await _dataService.getProjects();
-      final allSpots = await _dataService.getSpots();
+      final allSpots = await _spotService.getAllActiveSpots(); // Use real user spots from database
       final practiceHistory = await _dataService.getPracticeSessions();
       
       print('[Practice] Found ${projects.length} projects, ${allSpots.length} total spots, ${practiceHistory.length} past sessions');
       
-      final project = projects.firstWhere((p) => p.name == projectName);
-      final projectSpots = await _dataService.getSpotsForProject(project.id);
+      final project = projects.where((p) => p.name == projectName).firstOrNull;
+      Project actualProject;
+      List<Spot> projectSpots;
       
-      print('[Practice] Project spots: ${projectSpots.length}');
+      if (project == null) {
+        // If project doesn't exist, use all available spots
+        print('[Practice] Project "$projectName" not found, using all available spots');
+        if (projects.isEmpty) {
+          throw Exception('No projects available');
+        }
+        actualProject = projects.first;
+        projectSpots = allSpots; // Use all real user spots
+        print('[Practice] Using fallback project: ${actualProject.name} with ${projectSpots.length} spots');
+      } else {
+        actualProject = project;
+        // Get pieces from unified library instead of separate data service
+        final unifiedLibraryState = _ref.read(unifiedLibraryProvider);
+        List<Piece> projectPieces = [];
+        
+        await unifiedLibraryState.when(
+          data: (pieces) async {
+            projectPieces = pieces.where((p) => actualProject.pieceIds.contains(p.id)).toList();
+          },
+          loading: () async {},
+          error: (error, stack) async {
+            print('[Practice] Error loading unified library: $error');
+          },
+        );
+        
+        // Get spots from database (not just library)
+        final allDatabaseSpots = await _spotService.getAllActiveSpots();
+        projectSpots = allDatabaseSpots
+            .where((spot) => spot.pieceId.startsWith(actualProject.name))
+            .toList();
+        print('[Practice] Project spots from DATABASE: ${projectSpots.length}');
+        
+        // Also add spots from unified library pieces as backup
+        for (final piece in projectPieces) {
+          // Add any spots not already in our database list
+          for (final librarySpot in piece.spots) {
+            if (!projectSpots.any((dbSpot) => dbSpot.id == librarySpot.id)) {
+              projectSpots.add(librarySpot);
+            }
+          }
+        }
+        print('[Practice] Combined project spots (database + library): ${projectSpots.length}');
+      }
       
       // Use AI to select spots based on session type
       List<Spot> selectedSpots;
@@ -86,8 +137,8 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
           // Use REAL AI that learns from practice history
           selectedSpots = AiPracticeSelector.selectAiPoweredSpots(
             projectSpots, 
-            project: project,
-            sessionDuration: project.dailyPracticeGoal,
+            project: actualProject,
+            sessionDuration: actualProject.dailyPracticeGoal,
             practiceHistory: practiceHistory, // Pass practice history to AI
           );
           break;
@@ -110,17 +161,24 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       }
       
       if (selectedSpots.isEmpty) {
-        // No spots available for practice
+        // No spots available - set a special state to show user guidance
+        state = state.copyWith(
+          session: null,
+          isActive: false,
+          currentSpot: null,
+          selectedSpots: [],
+        );
+        print('[Practice] No spots available for practice. User needs to create spots first.');
         return;
       }
       
       // Create practice session
       final session = PracticeSession(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: '$projectName - ${sessionType.displayName}',
+        name: '${actualProject.name} - ${sessionType.displayName}',
         type: sessionType,
         status: SessionStatus.active,
-        plannedDuration: project.dailyPracticeGoal,
+        plannedDuration: actualProject.dailyPracticeGoal,
         spotSessions: selectedSpots.map((spot) => SpotSession(
           id: 'session_${spot.id}',
           sessionId: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -129,32 +187,124 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
           allocatedTime: Duration(minutes: spot.recommendedPracticeTime),
           status: SpotSessionStatus.pending,
         )).toList(),
-        projectId: project.id,
+        projectId: actualProject.id,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
       
-      // Start with first spot
+      // Auto-start with first spot so session begins properly
       final firstSpotSession = session.spotSessions.isNotEmpty ? session.spotSessions.first : null;
       
       state = state.copyWith(
         session: session,
-        currentSpot: firstSpotSession,
+        currentSpot: firstSpotSession, // Auto-select first spot
         selectedSpots: selectedSpots,
         currentSpotIndex: 0,
         isActive: true,
-        isRunning: true,
+        isRunning: true, // Start running so user can practice immediately
         sessionStartTime: DateTime.now(),
         spotResults: {},
       );
       
-      // Start first spot session
+      // Auto-start first spot session for immediate practice
       if (firstSpotSession != null) {
         await _startSpotSession(firstSpotSession);
       }
       
+      print('[Practice] Session started successfully with ${selectedSpots.length} spots. User can manually select spots to practice.');
+      
     } catch (e) {
       print('Error starting practice session: $e');
+    }
+  }
+
+  /// Start a practice session for a specific piece
+  Future<void> startPieceSession(Piece piece, SessionType sessionType) async {
+    try {
+      print('[Practice] Starting piece session for: ${piece.title}, type: $sessionType');
+      
+      // Get all spots for this piece
+      final pieceSpots = await _spotService.getSpotsForPiece(piece.id);
+      
+      if (pieceSpots.isEmpty) {
+        print('[Practice] No spots found for piece ${piece.title}, creating default spot');
+        // Create a default "Full Piece" spot if none exist
+        final defaultSpot = Spot(
+          id: 'spot_${piece.id}_${DateTime.now().millisecondsSinceEpoch}',
+          pieceId: piece.id,
+          title: 'Full Piece',
+          description: 'Practice the entire piece',
+          pageNumber: 1,
+          x: 0.0,
+          y: 0.0,
+          width: 1.0,
+          height: 1.0,
+          priority: SpotPriority.medium,
+          readinessLevel: ReadinessLevel.learning,
+          color: SpotColor.blue,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        await _spotService.saveSpot(defaultSpot);
+        pieceSpots.add(defaultSpot);
+      }
+      
+      print('[Practice] Found ${pieceSpots.length} spots for piece');
+      
+      // Create a temporary project for this piece
+      final tempProject = Project(
+        id: 'temp_${piece.id}',
+        name: '${piece.title} Practice',
+        description: 'Practice session for ${piece.title}',
+        pieceIds: [piece.id],
+        dailyPracticeGoal: Duration(minutes: 30), // Default 30 minutes
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      // Create session
+      final session = PracticeSession(
+        id: 'session_${DateTime.now().millisecondsSinceEpoch}',
+        name: '${piece.title} Practice Session',
+        type: sessionType,
+        status: SessionStatus.active,
+        plannedDuration: Duration(minutes: 30), // Default 30 minutes
+        spotSessions: pieceSpots.map((spot) => SpotSession(
+          id: 'session_${spot.id}',
+          sessionId: DateTime.now().millisecondsSinceEpoch.toString(),
+          spotId: spot.id,
+          orderIndex: pieceSpots.indexOf(spot),
+          allocatedTime: Duration(minutes: spot.recommendedPracticeTime),
+          status: SpotSessionStatus.pending,
+        )).toList(),
+        projectId: tempProject.id,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      state = state.copyWith(
+        session: session,
+        currentSpot: session.spotSessions.first, // Auto-select first spot
+        selectedSpots: pieceSpots,
+        currentSpotIndex: 0,
+        isActive: true,
+        isRunning: true, // Start running so user can practice immediately
+        sessionStartTime: DateTime.now(),
+        spotResults: {},
+      );
+      
+      // Auto-start first spot session
+      if (session.spotSessions.isNotEmpty) {
+        await _startSpotSession(session.spotSessions.first);
+      }
+      
+      print('[Practice] Piece session started successfully with ${pieceSpots.length} spots');
+      print('[Practice] Session state: isActive=${state.isActive}, hasActiveSession=${state.hasActiveSession}');
+      print('[Practice] Session status: ${session.status}');
+      
+    } catch (e) {
+      print('Error starting piece session: $e');
+      throw e;
     }
   }
 
@@ -213,8 +363,8 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
     final currentSpot = state.currentRealSpot!;
     final currentSpotSession = state.currentSpot!;
     
-    // Update spot progress in real data
-    await _dataService.updateSpotProgress(
+    // Update spot progress in real data using SpotService
+    await _spotService.recordPracticeSession(
       currentSpot.id, 
       result, 
       currentSpot.recommendedPracticeTime,
@@ -279,8 +429,32 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       updatedAt: DateTime.now(),
     );
     
-    // Save completed session
-    await _dataService.savePracticeSession(completedSession);
+    // Save completed session to DATABASE (not just SharedPreferences)
+    try {
+      print('[Practice] Attempting to save session to database: ${completedSession.id}');
+      await _databaseService.insertPracticeSession(completedSession);
+      print('[Practice] ✅ Session saved to database successfully: ${completedSession.id}');
+    } catch (e) {
+      print('[Practice] ❌ Error saving session to database: $e');
+    }
+    
+    // Also save to data service for compatibility (legacy)
+    try {
+      await _dataService.savePracticeSession(completedSession);
+      print('[Practice] ✅ Session saved to data service (legacy): ${completedSession.id}');
+    } catch (e) {
+      print('[Practice] ❌ Error saving session to data service: $e');
+    }
+    
+    print('[Practice] Session completion process finished: ${completedSession.id}');
+    
+    // Refresh practice provider stats to show updated today's progress
+    try {
+      _ref.read(practiceProvider.notifier).refresh();
+      print('[Practice] ✅ Refreshed practice provider stats after session completion');
+    } catch (e) {
+      print('[Practice] ❌ Error refreshing practice provider: $e');
+    }
     
     // Clear active session
     clearSession();
@@ -317,7 +491,30 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       updatedAt: DateTime.now(),
     );
     
-    await _dataService.savePracticeSession(cancelledSession);
+    // Save cancelled session to DATABASE
+    try {
+      print('[Practice] Attempting to save cancelled session to database: ${cancelledSession.id}');
+      await _databaseService.insertPracticeSession(cancelledSession);
+      print('[Practice] ✅ Cancelled session saved to database successfully: ${cancelledSession.id}');
+    } catch (e) {
+      print('[Practice] ❌ Error saving cancelled session to database: $e');
+    }
+    
+    try {
+      await _dataService.savePracticeSession(cancelledSession);
+      print('[Practice] ✅ Cancelled session saved to data service: ${cancelledSession.id}');
+    } catch (e) {
+      print('[Practice] ❌ Error saving cancelled session to data service: $e');
+    }
+    
+    // Refresh practice provider stats even for cancelled sessions
+    try {
+      _ref.read(practiceProvider.notifier).refresh();
+      print('[Practice] ✅ Refreshed practice provider stats after session cancellation');
+    } catch (e) {
+      print('[Practice] ❌ Error refreshing practice provider: $e');
+    }
+    
     clearSession();
   }
 
@@ -329,5 +526,7 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
 // Provider
 final activePracticeSessionProvider = StateNotifierProvider<ActivePracticeSessionNotifier, ActivePracticeSessionState>((ref) {
   final dataService = ref.read(dataServiceProvider);
-  return ActivePracticeSessionNotifier(dataService);
+  final spotService = ref.read(spotServiceProvider);
+  final databaseService = ref.read(databaseServiceProvider);
+  return ActivePracticeSessionNotifier(dataService, spotService, databaseService, ref);
 });

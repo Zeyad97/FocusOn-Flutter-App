@@ -64,77 +64,8 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
   }
 
   void _loadLibrary() {
-    // Load with beautiful demo pieces
-    state = [
-      MusicPiece(
-        id: '1',
-        title: 'Nocturne in E-flat major',
-        composer: 'Frédéric Chopin',
-        category: 'Classical',
-        dateAdded: DateTime.now().subtract(const Duration(days: 5)),
-        pages: 4,
-        practiceProgress: 0.85,
-        difficulty: 'Intermediate',
-        categoryColor: AppColors.primaryPurple,
-        isFavorite: true,
-      ),
-      MusicPiece(
-        id: '2',
-        title: 'Clair de Lune',
-        composer: 'Claude Debussy',
-        category: 'Classical',
-        dateAdded: DateTime.now().subtract(const Duration(days: 12)),
-        pages: 6,
-        practiceProgress: 0.92,
-        difficulty: 'Advanced',
-        categoryColor: AppColors.primaryPurple,
-        isFavorite: true,
-      ),
-      MusicPiece(
-        id: '3',
-        title: 'Autumn Leaves',
-        composer: 'Joseph Kosma',
-        category: 'Jazz',
-        dateAdded: DateTime.now().subtract(const Duration(days: 3)),
-        pages: 3,
-        practiceProgress: 0.67,
-        difficulty: 'Intermediate',
-        categoryColor: AppColors.warningOrange,
-      ),
-      MusicPiece(
-        id: '4',
-        title: 'Moonlight Sonata',
-        composer: 'Ludwig van Beethoven',
-        category: 'Classical',
-        dateAdded: DateTime.now().subtract(const Duration(days: 20)),
-        pages: 8,
-        practiceProgress: 0.73,
-        difficulty: 'Advanced',
-        categoryColor: AppColors.primaryPurple,
-      ),
-      MusicPiece(
-        id: '5',
-        title: 'The Girl from Ipanema',
-        composer: 'Antonio Carlos Jobim',
-        category: 'Bossa Nova',
-        dateAdded: DateTime.now().subtract(const Duration(days: 7)),
-        pages: 2,
-        practiceProgress: 0.45,
-        difficulty: 'Beginner',
-        categoryColor: AppColors.successGreen,
-      ),
-      MusicPiece(
-        id: '6',
-        title: 'Imagine',
-        composer: 'John Lennon',
-        category: 'Pop',
-        dateAdded: DateTime.now().subtract(const Duration(days: 1)),
-        pages: 3,
-        practiceProgress: 0.28,
-        difficulty: 'Beginner',
-        categoryColor: AppColors.errorRed,
-      ),
-    ];
+    // Load pieces from data service - no hardcoded demo data
+    state = [];
   }
 
   void toggleFavorite(String pieceId) {
@@ -484,7 +415,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
         Expanded(
           child: _buildEnhancedStatCard(
             'Avg Progress',
-            '${(avgProgress * 100).toInt()}%',
+            '${avgProgress.toInt()}%',
             Icons.trending_up,
             AppColors.successGreen,
             2,

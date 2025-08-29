@@ -39,50 +39,8 @@ class ProjectsNotifier extends StateNotifier<List<Project>> {
   }
 
   void _loadProjects() {
-    // Load with some demo projects that look professional
-    state = [
-      Project(
-        id: '1',
-        name: 'Spring Recital 2025',
-        description: 'Annual spring performance featuring romantic piano works',
-        concertDate: DateTime.now().add(const Duration(days: 21)),
-        pieces: ['Chopin Nocturne Op. 9 No. 2', 'Debussy Clair de Lune', 'Beethoven Moonlight Sonata'],
-        color: AppColors.primaryPurple,
-        progress: 0.78,
-        isPinned: true,
-        status: 'Critical',
-      ),
-      Project(
-        id: '2',
-        name: 'Competition Prep',
-        description: 'International Piano Competition preparation',
-        concertDate: DateTime.now().add(const Duration(days: 8)),
-        pieces: ['Chopin Ballade No. 1', 'Rachmaninoff Prelude Op. 23 No. 5'],
-        color: AppColors.errorRed,
-        progress: 0.92,
-        isPinned: true,
-        status: 'Urgent',
-      ),
-      Project(
-        id: '3',
-        name: 'Chamber Music',
-        description: 'Piano trio performance with violin and cello',
-        concertDate: DateTime.now().add(const Duration(days: 35)),
-        pieces: ['Brahms Piano Trio No. 1', 'Schubert Piano Trio No. 2'],
-        color: AppColors.successGreen,
-        progress: 0.65,
-        status: 'On Track',
-      ),
-      Project(
-        id: '4',
-        name: 'Teaching Portfolio',
-        description: 'Building repertoire for student demonstrations',
-        pieces: ['Bach Invention No. 4', 'Mozart Sonata K.331', 'Chopin Waltz Op. 64 No. 2'],
-        color: AppColors.warningOrange,
-        progress: 0.43,
-        status: 'Ongoing',
-      ),
-    ];
+    // Load projects from database - start with empty list
+    state = [];
   }
 
   void updateProgress(String projectId, double newProgress) {

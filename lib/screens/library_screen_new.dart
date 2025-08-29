@@ -9,7 +9,10 @@ import '../models/spot.dart';
 import '../providers/unified_library_provider.dart';
 import '../providers/practice_provider.dart';
 import '../services/spot_service.dart';
-import 'pdf_viewer_screen.dart';
+import '../utils/feedback_system.dart';
+import '../widgets/enhanced_search.dart';
+import 'pdf_viewer/pdf_score_viewer.dart';
+import 'settings/settings_screen.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -213,7 +216,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     // Filter by category
     if (_selectedCategory != 'All') {
       filtered = filtered.where((piece) => 
-  false
+        piece.category?.toLowerCase() == _selectedCategory.toLowerCase() ||
+        (piece.genre?.toLowerCase() == _selectedCategory.toLowerCase()) ||
+        // Fallback for classical pieces
+        (_selectedCategory == 'Classical' && (piece.category == null || piece.category!.isEmpty))
       ).toList();
     }
 
@@ -344,34 +350,52 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Widget _buildSearchBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.borderLight.withOpacity(0.5),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).shadowColor.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
+    return GestureDetector(
+      onTap: () async {
+        final result = await showSearch(
+          context: context,
+          delegate: EnhancedSearchDelegate(ref: ref),
+        );
+        
+        if (result != null) {
+          // Navigate to selected piece
+          _openPiece(result);
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppColors.borderLight.withOpacity(0.5),
+            width: 1,
           ),
-        ],
-        ],
-      ),
-      child: TextField(
-        onChanged: (value) {
-          setState(() {
-            _searchQuery = value;
-          });
-        },
-        decoration: InputDecoration(
-          hintText: 'Search pieces or composers...',
-          prefixIcon: Icon(Icons.search, color: AppColors.textSecondary),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.all(16),
+          boxShadow: [
+            BoxShadow(
+              color: Theme.of(context).shadowColor.withOpacity(0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(Icons.search, color: AppColors.textSecondary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Search pieces, spots, bookmarks...',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              Icon(Icons.filter_list, color: AppColors.textSecondary),
+            ],
+          ),
         ),
       ),
     );
@@ -631,6 +655,30 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                         ),
                                       ),
                                     ),
+                                    const SizedBox(width: 8),
+                                    // Difficulty indicator
+                                    Container(
+                                      width: 16,
+                                      height: 16,
+                                      decoration: BoxDecoration(
+                                        color: _getDifficultyColor(piece.difficulty),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          '${piece.difficulty}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 8,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 8),
@@ -694,6 +742,45 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         return AppColors.successGreen;
       default:
         return AppColors.primaryPurple;
+    }
+  }
+
+  /// Get color based on piece difficulty level (1-5) with colorblind support
+  Color _getDifficultyColor(int difficulty) {
+    final colorblindMode = ref.watch(colorblindModeProvider);
+    
+    if (colorblindMode) {
+      // Use colorblind-friendly color scheme
+      switch (difficulty) {
+        case 1:
+          return AppColors.colorblindBlue; // Beginner - Blue
+        case 2:
+          return AppColors.colorblindPattern1; // Easy - Sea Green
+        case 3:
+          return AppColors.colorblindPattern3; // Intermediate - Indigo  
+        case 4:
+          return AppColors.colorblindOrange; // Advanced - Orange
+        case 5:
+          return AppColors.colorblindRed; // Expert - Dark Red
+        default:
+          return AppColors.colorblindPattern3; // Default to indigo
+      }
+    } else {
+      // Use standard color scheme
+      switch (difficulty) {
+        case 1:
+          return AppColors.successGreen; // Beginner - Green
+        case 2:
+          return AppColors.lightPurple; // Easy - Light Purple
+        case 3:
+          return AppColors.accentPurple; // Intermediate - Medium Purple  
+        case 4:
+          return AppColors.warningOrange; // Advanced - Orange
+        case 5:
+          return AppColors.errorRed; // Expert - Red
+        default:
+          return AppColors.accentPurple; // Default to intermediate
+      }
     }
   }
 
@@ -825,16 +912,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => PDFViewerScreen(
-            document: PDFDocument(
-              id: piece.id,
-              title: piece.title,
-              filePath: piece.pdfFilePath,
-              category: 'Music',
-              isFavorite: false,
-              lastOpened: DateTime.now(),
-            ),
-          ),
+          builder: (context) => PDFScoreViewer(piece: piece),
         ),
       ).then((_) {
         // Refresh library when returning from PDF viewer
@@ -906,15 +984,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 _createManualPiece();
               },
             ),
-            ListTile(
-              leading: Icon(Icons.science, color: AppColors.warningOrange),
-              title: const Text('Create Demo Piece'),
-              subtitle: const Text('Add a sample piece for testing'),
-              onTap: () {
-                Navigator.pop(context);
-                _createDemoPiece();
-              },
-            ),
           ],
         ),
         actions: [
@@ -927,34 +996,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
   }
 
-  Future<void> _createDemoPiece() async {
-    final now = DateTime.now();
-    final demoPiece = Piece(
-      id: 'demo_${now.millisecondsSinceEpoch}',
-      title: 'My Practice Piece',
-      composer: 'Practice Composer',
-      keySignature: 'C major',
-      difficulty: 3,
-      pdfFilePath: 'assets/pdfs/demo.pdf',
-      spots: [],
-      createdAt: now,
-      updatedAt: now,
-      totalPages: 4,
-    );
-    
-    await ref.read(unifiedLibraryProvider.notifier).addPiece(demoPiece);
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Demo piece "${demoPiece.title}" created! Tap it to add practice spots.'),
-          backgroundColor: AppColors.successGreen,
-          duration: Duration(seconds: 4),
-        ),
-      );
-    }
-  }
-
+  
   Future<void> _createManualPiece() async {
     final pieceDetails = await _showPieceDetailsDialog();
     if (pieceDetails == null) return;
@@ -1137,13 +1179,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             await _createInitialPracticeSpot(piece);
             
             if (mounted) {
-              // Show snackbar first
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Imported "${piece.title}" successfully!'),
-                  backgroundColor: AppColors.successGreen,
-                  duration: Duration(seconds: 3),
-                ),
+              // Show enhanced success feedback
+              FeedbackSystem.showSuccess(
+                context,
+                'Imported "${piece.title}" successfully!',
+                duration: Duration(seconds: 3),
               );
               
               // Then show detailed popup like Lovable
@@ -1307,6 +1347,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
   }
 
+  void _openPiece(Piece piece) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PDFScoreViewer(piece: piece),
+      ),
+    );
+  }
+
   /// Helper method to build info rows for the import success dialog
   Widget _buildInfoRow(String label, String value) {
     return Padding(
@@ -1336,5 +1385,36 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ],
       ),
     );
+  }
+
+  /// Create initial practice spot for imported piece
+  Future<void> _createInitialPracticeSpot(Piece piece) async {
+    try {
+      // Create a default "Full Piece" spot for immediate practice availability
+      final defaultSpot = Spot(
+        id: 'default_${piece.id}_${DateTime.now().millisecondsSinceEpoch}',
+        pieceId: piece.id,
+        title: 'Full Piece',
+        description: 'General practice for this imported piece. Open the PDF to create specific spots.',
+        pageNumber: 1,
+        x: 0.0,
+        y: 0.0,
+        width: 1.0,
+        height: 1.0,
+        priority: SpotPriority.medium,
+        readinessLevel: ReadinessLevel.learning,
+        color: SpotColor.blue, // Default to practice (blue)
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      // Save the spot to database
+      final spotService = SpotService();
+      await spotService.saveSpot(defaultSpot);
+      print('LibraryScreen: Created initial practice spot for piece "${piece.title}"');
+    } catch (e) {
+      print('LibraryScreen: Failed to create initial practice spot: $e');
+      // Don't throw - spot creation is optional for import success
+    }
   }
 }

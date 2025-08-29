@@ -49,7 +49,6 @@ class SpotService {
         easeFactor REAL DEFAULT 2.5,
         interval INTEGER DEFAULT 1,
         repetitions INTEGER DEFAULT 0,
-        recommendedPracticeTime INTEGER DEFAULT 5,
         isActive INTEGER DEFAULT 1,
         metadata TEXT
       )
@@ -79,6 +78,9 @@ class SpotService {
     
     // Debug logging
     print('SpotService: Saving spot "${spot.title}" (pieceId: ${spot.pieceId}, isActive: ${spot.isActive})');
+    print('  - Color: ${spot.color.name}');
+    print('  - Priority: ${spot.priority.name}');
+    print('  - Readiness: ${spot.readinessLevel.name}');
     
     await db.insert(
       'spots',
@@ -87,6 +89,24 @@ class SpotService {
     );
     
     print('SpotService: Spot saved successfully');
+  }
+
+  Future<void> updateSpot(Spot spot) async {
+    final db = await database;
+    
+    print('SpotService: Updating spot "${spot.title}" (id: ${spot.id})');
+    print('  - Color: ${spot.color.name}');
+    print('  - Priority: ${spot.priority.name}');
+    print('  - Readiness: ${spot.readinessLevel.name}');
+    
+    await db.update(
+      'spots',
+      _spotToMap(spot),
+      where: 'id = ?',
+      whereArgs: [spot.id],
+    );
+    
+    print('SpotService: Spot updated successfully');
   }
 
   Future<void> recordPracticeSession(String spotId, SpotResult result, int practiceTimeMinutes, {String? notes}) async {
@@ -122,7 +142,7 @@ class SpotService {
         color: spot.getUpdatedColorBasedOnResult(result),
       );
       
-      await saveSpot(updatedSpot);
+      await updateSpot(updatedSpot);
       print('SpotService: Practice session recorded for spot $spotId');
     }
   }
@@ -269,7 +289,6 @@ class SpotService {
       'easeFactor': spot.easeFactor,
       'interval': spot.interval,
       'repetitions': spot.repetitions,
-      'recommendedPracticeTime': spot.recommendedPracticeTime,
       'isActive': spot.isActive ? 1 : 0,
       'metadata': spot.metadata != null ? spot.metadata.toString() : null,
     };
@@ -313,7 +332,6 @@ class SpotService {
       easeFactor: map['easeFactor'] ?? 2.5,
       interval: map['interval'] ?? 1,
       repetitions: map['repetitions'] ?? 0,
-      recommendedPracticeTime: map['recommendedPracticeTime'] ?? 5,
       isActive: map['isActive'] == 1,
       metadata: map['metadata'] != null ? {} : null, // Parse JSON if needed
     );

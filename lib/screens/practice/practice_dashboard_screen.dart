@@ -333,8 +333,8 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
                             mainAxisSpacing: 12,
                             children: [
                               _buildQuickActionCard(
-                                'Smart Practice',
-                                'AI-powered session',
+                                'Quick Practice',
+                                'Choose your session type',
                                 Icons.psychology,
                                 AppColors.primaryPurple,
                                 () => _startSmartPractice(),
@@ -704,10 +704,10 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
 
   void _startSmartPractice() {
     _showPracticeDialog(
-      'Smart Practice',
-      'AI-powered session targeting your weak spots',
+      'Quick Practice',
+      'Start your regular practice session',
       AppColors.primaryPurple,
-      () => _runPracticeSession('Smart Practice', 25, 5, 8.5),
+      () => _runPracticeSession('Quick Practice', 25, 5, 8.5),
     );
   }
 

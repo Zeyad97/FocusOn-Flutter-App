@@ -13,9 +13,6 @@ class UnifiedLibraryNotifier extends StateNotifier<AsyncValue<List<Piece>>> {
   
   Future<void> _loadLibrary() async {
     try {
-      // Ensure sample data exists
-      await _pieceService.createSamplePiecesIfEmpty();
-      
       // Load all pieces with real progress from spots
       final pieces = await _pieceService.getAllPiecesWithProgress(_spotService);
       
@@ -57,6 +54,27 @@ class UnifiedLibraryNotifier extends StateNotifier<AsyncValue<List<Piece>>> {
       );
       await _pieceService.savePiece(updatedPiece);
       await _loadLibrary();
+    }
+  }
+  
+  Future<void> toggleFavorite(String pieceId) async {
+    print('UnifiedLibraryProvider: toggleFavorite called for piece $pieceId');
+    
+    // Update the database first
+    final piece = await _pieceService.getPiece(pieceId);
+    if (piece != null) {
+      final newFavoriteStatus = !piece.isFavorite;
+      final updatedPiece = piece.copyWith(
+        isFavorite: newFavoriteStatus,
+        updatedAt: DateTime.now(),
+      );
+      print('UnifiedLibraryProvider: Saving piece ${piece.title} with favorite status: ${newFavoriteStatus}');
+      await _pieceService.savePiece(updatedPiece);
+      
+      // Force immediate state update
+      print('UnifiedLibraryProvider: Forcing state reload');
+      await _loadLibrary();
+      print('UnifiedLibraryProvider: State reloaded');
     }
   }
 }

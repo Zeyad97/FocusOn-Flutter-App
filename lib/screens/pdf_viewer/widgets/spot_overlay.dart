@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/spot.dart';
 import '../../../theme/app_theme.dart';
+import '../../../services/srs_service.dart';
+import '../../../services/spot_service.dart';
+import '../../settings/settings_screen.dart';
 
 /// Overlay widget for displaying and managing spots on PDF pages
-class SpotOverlay extends StatelessWidget {
+class SpotOverlay extends ConsumerWidget {
   final List<Spot> spots;
   final double pageWidth;
   final double pageHeight;
@@ -24,7 +28,7 @@ class SpotOverlay extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return SizedBox(
       width: pageWidth * zoomLevel,
       height: pageHeight * zoomLevel,
@@ -132,11 +136,13 @@ class _SpotWidgetState extends State<_SpotWidget>
   }
 
   Widget _buildCompactSpot(Color spotColor) {
-    final spotSize = 20.0 * widget.zoomLevel.clamp(0.5, 1.5);
+    // Make dots smaller and positioned exactly at touch location
+    final dotSize = 16.0 * widget.zoomLevel.clamp(0.5, 1.5);
     
     return Positioned(
-      left: (widget.spot.x * widget.pageWidth) - (spotSize / 2),
-      top: (widget.spot.y * widget.pageHeight) - (spotSize / 2),
+      // Position dot exactly at the touch coordinates (centered)
+      left: (widget.spot.x * widget.pageWidth * widget.zoomLevel) - (dotSize / 2),
+      top: (widget.spot.y * widget.pageHeight * widget.zoomLevel) - (dotSize / 2),
       child: AnimatedBuilder(
         animation: _animationController,
         builder: (context, child) {
@@ -151,26 +157,24 @@ class _SpotWidgetState extends State<_SpotWidget>
               onLongPress: widget.onLongPressed,
               behavior: HitTestBehavior.opaque,
               child: Container(
-                width: spotSize,
-                height: spotSize,
+                width: dotSize,
+                height: dotSize,
                 decoration: BoxDecoration(
-                  color: spotColor.withOpacity(0.9),
+                  color: spotColor,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.surface,
                     width: 2,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: spotColor.withOpacity(0.5),
-                      blurRadius: 6,
+                      color: spotColor.withOpacity(0.6),
+                      blurRadius: 4,
                       spreadRadius: 1,
                     ),
                   ],
                 ),
-                child: Center(
-                  child: _getSpotIcon(),
-                ),
+                // Remove icon for cleaner dot appearance
               ),
             ),
           );
@@ -180,13 +184,13 @@ class _SpotWidgetState extends State<_SpotWidget>
   }
 
   Widget _buildDetailedSpot(Color spotColor) {
-    // Make spots larger and more visible
-    final baseWidth = 180.0 * widget.zoomLevel;
-    final baseHeight = 80.0 * widget.zoomLevel;
+    // Show larger dots at higher zoom levels, positioned exactly at touch location
+    final dotSize = 24.0 * widget.zoomLevel.clamp(0.8, 2.0);
     
     return Positioned(
-      left: widget.spot.x * widget.pageWidth,
-      top: widget.spot.y * widget.pageHeight,
+      // Position dot exactly at the touch coordinates (centered)
+      left: (widget.spot.x * widget.pageWidth * widget.zoomLevel) - (dotSize / 2),
+      top: (widget.spot.y * widget.pageHeight * widget.zoomLevel) - (dotSize / 2),
       child: AnimatedBuilder(
         animation: _animationController,
         builder: (context, child) {
@@ -201,124 +205,33 @@ class _SpotWidgetState extends State<_SpotWidget>
               onLongPress: widget.onLongPressed,
               behavior: HitTestBehavior.opaque,
               child: Container(
-                constraints: BoxConstraints(
-                  minWidth: baseWidth,
-                  minHeight: baseHeight,
-                  maxWidth: baseWidth * 1.2,
-                ),
+                width: dotSize,
+                height: dotSize,
                 decoration: BoxDecoration(
-                  color: spotColor.withOpacity(0.25),
+                  color: spotColor,
+                  shape: BoxShape.circle,
                   border: Border.all(
-                    color: spotColor,
-                    width: 3.0,
+                    color: Theme.of(context).colorScheme.surface,
+                    width: 3,
                   ),
-                  borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: spotColor.withOpacity(0.4),
-                      blurRadius: 12,
+                      color: spotColor.withOpacity(0.6),
+                      blurRadius: 6,
                       spreadRadius: 2,
-                      offset: const Offset(0, 3),
                     ),
                   ],
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header with priority indicator and title
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: spotColor,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: _getSpotIcon(),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              widget.spot.title.isEmpty ? 'Practice Spot' : widget.spot.title,
-                              style: TextStyle(
-                                color: spotColor,
-                                fontSize: (14 * widget.zoomLevel).clamp(12, 18),
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 8),
-                      
-                      // Status info with larger text
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: spotColor.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              _getReadinessLabel(),
-                              style: TextStyle(
-                                color: spotColor,
-                                fontSize: (12 * widget.zoomLevel).clamp(10, 14),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const Spacer(),
-                          if (widget.spot.practiceCount > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.9),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                '${widget.spot.practiceCount}x practiced',
-                                style: TextStyle(
-                                  color: spotColor,
-                                  fontSize: (10 * widget.zoomLevel).clamp(8, 12),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 4),
-                      
-                      // Edit indicator
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.touch_app,
-                            color: spotColor.withOpacity(0.7),
-                            size: 12,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Tap to edit or practice',
-                            style: TextStyle(
-                              color: spotColor.withOpacity(0.7),
-                              fontSize: 9,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+                // Add small priority indicator inside the dot
+                child: widget.spot.priority == SpotPriority.high
+                    ? Center(
+                        child: Icon(
+                          Icons.priority_high,
+                          color: Colors.white,
+                          size: dotSize * 0.5,
+                        ),
+                      )
+                    : null,
               ),
             ),
           );
@@ -349,7 +262,7 @@ class _SpotWidgetState extends State<_SpotWidget>
   }
 
   Widget _getSpotIcon() {
-    final iconColor = Colors.white;
+    final iconColor = Theme.of(context).colorScheme.onPrimary;
     final iconSize = (12.0 * widget.zoomLevel).clamp(8.0, 16.0);
     
     switch (widget.spot.priority) {
@@ -421,60 +334,40 @@ class _TentativeSpotWidgetState extends State<_TentativeSpotWidget>
 
   @override
   Widget build(BuildContext context) {
-    final spotSize = 32.0 * widget.zoomLevel;
+    final dotSize = 20.0 * widget.zoomLevel;
     
     return Positioned(
-      left: (widget.position.dx * widget.zoomLevel) - (spotSize / 2),
-      top: (widget.position.dy * widget.zoomLevel) - (spotSize / 2),
+      // Position dot exactly at the touch coordinates (centered)
+      left: (widget.position.dx * widget.zoomLevel) - (dotSize / 2),
+      top: (widget.position.dy * widget.zoomLevel) - (dotSize / 2),
       child: AnimatedBuilder(
         animation: _animationController,
         builder: (context, child) {
           return Transform.scale(
             scale: _scaleAnimation.value,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: spotSize,
-                  height: spotSize,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryPurple.withOpacity(0.8),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white,
-                      width: 3,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryPurple.withOpacity(0.5),
-                        blurRadius: 15,
-                        spreadRadius: 5,
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.add,
-                    color: Colors.white,
-                    size: 16.0 * widget.zoomLevel,
-                  ),
+            child: Container(
+              width: dotSize,
+              height: dotSize,
+              decoration: BoxDecoration(
+                color: AppColors.primaryPurple,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.surface,
+                  width: 3,
                 ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryPurple.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primaryPurple.withOpacity(0.6),
+                    blurRadius: 8,
+                    spreadRadius: 3,
                   ),
-                  child: Text(
-                    'Create Spot',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
+              child: Icon(
+                Icons.add,
+                color: Theme.of(context).colorScheme.onPrimary,
+                size: dotSize * 0.5,
+              ),
             ),
           );
         },
@@ -484,7 +377,7 @@ class _TentativeSpotWidgetState extends State<_TentativeSpotWidget>
 }
 
 /// Quick spot creation dialog
-class SpotCreationDialog extends StatefulWidget {
+class SpotCreationDialog extends ConsumerStatefulWidget {
   final Offset position;
   final int page;
   final Function(Spot) onSpotCreated;
@@ -497,10 +390,10 @@ class SpotCreationDialog extends StatefulWidget {
   });
 
   @override
-  State<SpotCreationDialog> createState() => _SpotCreationDialogState();
+  ConsumerState<SpotCreationDialog> createState() => _SpotCreationDialogState();
 }
 
-class _SpotCreationDialogState extends State<SpotCreationDialog> {
+class _SpotCreationDialogState extends ConsumerState<SpotCreationDialog> {
   final _titleController = TextEditingController();
   final _notesController = TextEditingController();
   SpotPriority _priority = SpotPriority.medium;
@@ -520,7 +413,10 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
         children: [
           Icon(Icons.create, color: AppColors.primaryPurple),
           const SizedBox(width: 8),
-          const Text('Create Practice Spot'),
+          Text(
+            'Create Practice Spot',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+          ),
         ],
       ),
       content: SingleChildScrollView(
@@ -533,7 +429,7 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
               'Quick Setup',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 8),
@@ -553,9 +449,12 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
             
             TextField(
               controller: _titleController,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: InputDecoration(
                 labelText: 'Spot Title',
+                labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 hintText: 'e.g., "Measure 32-35 triplets"',
+                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
                 prefixIcon: Icon(Icons.label_outline),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
@@ -563,7 +462,7 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
             ),
             const SizedBox(height: 16),
             
-            const Text('Priority Level', style: TextStyle(fontWeight: FontWeight.w600)),
+            Text('Priority Level', style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -575,7 +474,7 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
                       Icon(
                         _getPriorityIcon(priority),
                         size: 16,
-                        color: _priority == priority ? Colors.white : _getPriorityColor(priority),
+                        color: _priority == priority ? Theme.of(context).colorScheme.onPrimary : _getPriorityColor(priority),
                       ),
                       const SizedBox(width: 4),
                       Text(_getPriorityLabel(priority)),
@@ -587,7 +486,7 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
                   },
                   selectedColor: _getPriorityColor(priority),
                   labelStyle: TextStyle(
-                    color: _priority == priority ? Colors.white : null,
+                    color: _priority == priority ? Colors.white : Theme.of(context).colorScheme.onSurface,
                   ),
                 );
               }).toList(),
@@ -595,7 +494,7 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
             
             const SizedBox(height: 16),
             
-            const Text('Current Level', style: TextStyle(fontWeight: FontWeight.w600)),
+            Text('Current Level', style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -608,7 +507,7 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
                   },
                   selectedColor: _getReadinessColor(readiness),
                   labelStyle: TextStyle(
-                    color: _readiness == readiness ? Colors.white : null,
+                    color: _readiness == readiness ? Colors.white : Theme.of(context).colorScheme.onSurface,
                   ),
                 );
               }).toList(),
@@ -618,9 +517,12 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
             
             TextField(
               controller: _notesController,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: InputDecoration(
                 labelText: 'Notes (Optional)',
+                labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 hintText: 'Practice notes, tempo, fingering...',
+                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
                 prefixIcon: Icon(Icons.note_outlined),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
@@ -638,7 +540,7 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
           onPressed: _createSpot,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primaryPurple,
-            foregroundColor: Colors.white,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -729,7 +631,7 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
       SnackBar(
         content: Row(
           children: [
-            Icon(Icons.check_circle, color: Colors.white),
+            Icon(Icons.check_circle, color: Theme.of(context).colorScheme.onPrimary),
             const SizedBox(width: 8),
             Text('Practice spot "$title" created!'),
           ],
@@ -766,16 +668,35 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
   }
 
   DateTime _calculateNextDue() {
-    switch (_readiness) {
-      case ReadinessLevel.newSpot:
-        return DateTime.now(); // Practice immediately
-      case ReadinessLevel.learning:
-        return DateTime.now().add(const Duration(hours: 4)); // Practice again soon
-      case ReadinessLevel.review:
-        return DateTime.now().add(const Duration(days: 1)); // Review tomorrow
-      case ReadinessLevel.mastered:
-        return DateTime.now().add(const Duration(days: 7)); // Review in a week
-    }
+    // Use the SRS service with user's frequency settings
+    final srsService = ref.read(srsServiceProvider);
+    
+    // Create a temporary spot to calculate next due date
+    final tempSpot = Spot(
+      id: '',
+      pieceId: '', // Temporary empty pieceId for calculation
+      title: '',
+      description: '',
+      pageNumber: widget.page,
+      x: widget.position.dx,
+      y: widget.position.dy,
+      width: 0.15,
+      height: 0.08,
+      priority: _priority,
+      readinessLevel: _readiness,
+      color: _getSpotColorFromReadiness(_readiness),
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      nextDue: DateTime.now(),
+      practiceCount: 0,
+    );
+    
+    // Calculate initial due date for new spots based on readiness level
+    final result = _readiness == ReadinessLevel.newSpot 
+        ? SpotResult.good  // New spots get standard interval
+        : SpotResult.excellent;  // Other readiness levels get longer intervals
+        
+    return srsService.calculateNextDue(tempSpot, result);
   }
 
   String _getPriorityLabel(SpotPriority priority) {
@@ -838,18 +759,19 @@ class _SpotCreationDialogState extends State<SpotCreationDialog> {
   }
 }
 
-class _FullScreenSpotEditor extends StatefulWidget {
+class _FullScreenSpotEditor extends ConsumerStatefulWidget {
   final Spot spot;
 
   const _FullScreenSpotEditor({required this.spot});
 
   @override
-  State<_FullScreenSpotEditor> createState() => _FullScreenSpotEditorState();
+  ConsumerState<_FullScreenSpotEditor> createState() => _FullScreenSpotEditorState();
 }
 
-class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
+class _FullScreenSpotEditorState extends ConsumerState<_FullScreenSpotEditor> {
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
+  late TextEditingController _notesController;
   late SpotPriority _priority;
   late ReadinessLevel _readinessLevel;
   late SpotColor _spotColor;
@@ -859,6 +781,7 @@ class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
     super.initState();
     _titleController = TextEditingController(text: widget.spot.title);
     _descriptionController = TextEditingController(text: widget.spot.description);
+    _notesController = TextEditingController(text: widget.spot.notes ?? '');
     _priority = widget.spot.priority;
     _readinessLevel = widget.spot.readinessLevel;
     _spotColor = widget.spot.color;
@@ -868,20 +791,13 @@ class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
   Color _getSpotDisplayColor() {
-    switch (_spotColor) {
-      case SpotColor.red:
-        return AppColors.errorRed;
-      case SpotColor.yellow:
-        return AppColors.warningYellow;
-      case SpotColor.green:
-        return AppColors.successGreen;
-      case SpotColor.blue:
-        return AppColors.primaryBlue;
-    }
+    final colorblindMode = ref.watch(colorblindModeProvider);
+    return AppColors.getSpotColorByEnum(_spotColor, colorblindMode: colorblindMode);
   }
 
   @override
@@ -890,7 +806,7 @@ class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
       appBar: AppBar(
         title: const Text('Edit Practice Spot'),
         backgroundColor: _getSpotDisplayColor(),
-        foregroundColor: Colors.white,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
         actions: [
           IconButton(
             icon: const Icon(Icons.delete),
@@ -944,14 +860,14 @@ class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
                         children: [
                           Icon(
                             isSelected ? Icons.check_circle : Icons.circle,
-                            color: isSelected ? Colors.white : displayColor,
+                            color: isSelected ? Theme.of(context).colorScheme.onPrimary : displayColor,
                             size: 24,
                           ),
                           const SizedBox(height: 4),
                           Text(
                             _getColorLabel(color),
                             style: TextStyle(
-                              color: isSelected ? Colors.white : displayColor,
+                              color: isSelected ? Theme.of(context).colorScheme.onPrimary : displayColor,
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
                             ),
@@ -983,7 +899,7 @@ class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
                   },
                   selectedColor: _getPriorityColor(priority),
                   labelStyle: TextStyle(
-                    color: _priority == priority ? Colors.white : null,
+                    color: _priority == priority ? Theme.of(context).colorScheme.onPrimary : null,
                   ),
                 );
               }).toList(),
@@ -1008,7 +924,7 @@ class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
                   },
                   selectedColor: _getReadinessColor(readiness),
                   labelStyle: TextStyle(
-                    color: _readinessLevel == readiness ? Colors.white : null,
+                    color: _readinessLevel == readiness ? Theme.of(context).colorScheme.onPrimary : null,
                   ),
                 );
               }).toList(),
@@ -1037,7 +953,7 @@ class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
                 onPressed: _saveSpot,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _getSpotDisplayColor(),
-                  foregroundColor: Colors.white,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1056,16 +972,8 @@ class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
   }
 
   Color _getColorForSpotColor(SpotColor color) {
-    switch (color) {
-      case SpotColor.red:
-        return AppColors.errorRed;
-      case SpotColor.yellow:
-        return AppColors.warningYellow;
-      case SpotColor.green:
-        return AppColors.successGreen;
-      case SpotColor.blue:
-        return AppColors.primaryBlue;
-    }
+    final colorblindMode = ref.watch(colorblindModeProvider);
+    return AppColors.getSpotColorByEnum(color, colorblindMode: colorblindMode);
   }
 
   String _getColorLabel(SpotColor color) {
@@ -1129,15 +1037,36 @@ class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
     }
   }
 
-  void _saveSpot() {
-    // TODO: Implement spot saving logic
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Spot "${_titleController.text}" saved!'),
-        backgroundColor: AppColors.successGreen,
-      ),
-    );
+  void _saveSpot() async {
+    try {
+      // Create updated spot with new values
+      final updatedSpot = widget.spot.copyWith(
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        notes: _notesController.text.trim(),
+        color: _spotColor,
+        priority: _priority,
+        readinessLevel: _readinessLevel,
+      );
+      
+      // Save to database
+      await ref.read(spotServiceProvider).saveSpot(updatedSpot);
+      
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Spot "${_titleController.text}" saved successfully!'),
+          backgroundColor: AppColors.successGreen,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save spot: $e'),
+          backgroundColor: AppColors.errorRed,
+        ),
+      );
+    }
   }
 
   void _showDeleteConfirmation() {
@@ -1152,17 +1081,31 @@ class _FullScreenSpotEditorState extends State<_FullScreenSpotEditor> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Close editor
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Spot deleted'),
-                  backgroundColor: Colors.red,
-                ),
-              );
+              
+              try {
+                // Delete the spot from the database
+                await ref.read(spotServiceProvider).deleteSpot(widget.spot.id);
+                
+                Navigator.pop(context); // Close editor
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Spot deleted successfully'),
+                    backgroundColor: AppColors.successGreen,
+                  ),
+                );
+              } catch (e) {
+                Navigator.pop(context); // Close editor
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to delete spot: $e'),
+                    backgroundColor: AppColors.errorRed,
+                  ),
+                );
+              }
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.errorRed),
             child: const Text('Delete'),
           ),
         ],

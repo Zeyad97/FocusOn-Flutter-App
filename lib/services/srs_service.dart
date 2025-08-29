@@ -1,6 +1,8 @@
 import 'dart:math' as math;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/spot.dart';
 import '../models/project.dart';
+import '../providers/app_settings_provider.dart';
 
 /// SRS difficulty profiles for different learning approaches
 enum SRSProfile {
@@ -282,8 +284,8 @@ class SRSService {
     double urgency = spot.color.priorityWeight;
     
     // Overdue penalty
-    if (spot.nextDue.isBefore(now)) {
-      final hoursSinceOverdue = now.difference(spot.nextDue).inHours;
+    if (spot.nextDue?.isBefore(now) == true) {
+      final hoursSinceOverdue = now.difference(spot.nextDue!).inHours;
       urgency += math.min(0.3, hoursSinceOverdue * 0.01); // Max 30% penalty
     }
     
@@ -343,7 +345,7 @@ class SRSService {
       if (selectedSpots.length >= maxSpotsToSelect) break;
       
       final spot = item['spot'] as Spot;
-      final spotTime = spot.recommendedPracticeTime;
+      final spotTime = Duration(minutes: spot.recommendedPracticeTime);
       
       if (targetDuration != null && 
           totalTime + spotTime > targetTime &&
@@ -425,9 +427,9 @@ class SRSService {
     
     // Check feasibility
     final totalNeededTime = redSpots.fold<Duration>(Duration.zero, (sum, spot) => 
-        sum + spot.recommendedPracticeTime) +
+        sum + Duration(minutes: spot.recommendedPracticeTime)) +
       yellowSpots.fold<Duration>(Duration.zero, (sum, spot) => 
-        sum + spot.recommendedPracticeTime);
+        sum + Duration(minutes: spot.recommendedPracticeTime));
     
     final isFeasible = totalNeededTime.inMilliseconds <= 
         (dailyTime.inMilliseconds * daysUntilConcert * 0.8); // 80% utilization
@@ -454,7 +456,7 @@ class SRSService {
     // Look at recent performance (last 5 sessions)
     final recentHistory = spot.history.take(5).toList();
     final successCount = recentHistory.where((h) => 
-        h.result == SpotResult.success).length;
+        h.result == SpotResult.good || h.result == SpotResult.excellent).length;
     final failCount = recentHistory.where((h) => 
         h.result == SpotResult.failed).length;
     
@@ -493,3 +495,18 @@ class SRSService {
     return spot.color; // No change needed
   }
 }
+
+/// Provider for SRS service that uses app settings for review frequencies
+final srsServiceProvider = Provider<SRSService>((ref) {
+  final appSettings = ref.watch(appSettingsProvider);
+  
+  // Convert app settings to SRS settings
+  final srsSettings = SRSSettings(
+    // Convert frequency percentages to decimal (8-25% range to 0.08-0.25)
+    redSpotFrequency: appSettings.criticalSpotsFrequency / 100.0,
+    yellowSpotFrequency: appSettings.reviewSpotsFrequency / 100.0,
+    greenSpotFrequency: appSettings.maintenanceSpotsFrequency / 100.0,
+  );
+  
+  return SRSService(settings: srsSettings);
+});

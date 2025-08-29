@@ -30,40 +30,70 @@ class AiPracticeSelector {
   
   /// Critical Focus: Only red spots and urgent deadlines  
   static List<Spot> selectCriticalSpots(List<Spot> allSpots, {int maxSpots = 5}) {
+    print('AiPracticeSelector: selectCriticalSpots called with ${allSpots.length} spots');
+    
     final now = DateTime.now();
-    return allSpots
-        .where((s) => s.isActive && (
+    final activeSpots = allSpots.where((s) => s.isActive).toList();
+    print('AiPracticeSelector: ${activeSpots.length} active spots found');
+    
+    // Expand criteria to include more spots since readiness is low
+    final criticalSpots = activeSpots
+        .where((s) => 
           s.color == SpotColor.red ||
+          s.color == SpotColor.blue ||  // Include blue spots (new/unpracticed)
           s.priority == SpotPriority.high ||
+          s.priority == SpotPriority.medium ||  // Include medium priority
           (s.nextDue != null && s.nextDue!.isBefore(now))
-        ))
-        .toList()
+        )
+        .toList();
+    
+    print('AiPracticeSelector: ${criticalSpots.length} critical spots found:');
+    for (final spot in criticalSpots) {
+      print('  - ${spot.title}: color=${spot.color.name}, priority=${spot.priority.name}, isActive=${spot.isActive}');
+    }
+    
+    // If still no spots found, just take any active spots
+    if (criticalSpots.isEmpty && activeSpots.isNotEmpty) {
+      print('AiPracticeSelector: No critical spots found, taking any active spots');
+      final result = activeSpots.take(maxSpots).toList();
+      print('AiPracticeSelector: Returning ${result.length} any active spots');
+      return result;
+    }
+    
+    final result = criticalSpots
         ..sort((a, b) => _urgencyScore(b, now).compareTo(_urgencyScore(a, now)))
-        ..take(maxSpots);
+        ..take(maxSpots)
+        .toList();
+    
+    print('AiPracticeSelector: Returning ${result.length} spots for critical practice');
+    return result;
   }
   
   /// Balanced Practice: Mix of all readiness levels
   static List<Spot> selectBalancedSpots(List<Spot> allSpots, {int maxSpots = 5}) {
-    final activeSpots = allSpots.where((s) => s.isActive).toList();
+    print('AiPracticeSelector: selectBalancedSpots called with ${allSpots.length} spots');
     
-    // Aim for balanced distribution
+    final activeSpots = allSpots.where((s) => s.isActive).toList();
+    print('AiPracticeSelector: ${activeSpots.length} active spots found for balanced practice');
+    
+    // Aim for balanced distribution - include blue spots too
     final redSpots = activeSpots.where((s) => s.color == SpotColor.red).take(2);
+    final blueSpots = activeSpots.where((s) => s.color == SpotColor.blue).take(2);  // Include blue spots
     final yellowSpots = activeSpots.where((s) => s.color == SpotColor.yellow).take(2);
     final greenSpots = activeSpots.where((s) => s.color == SpotColor.green).take(1);
     
-    final balanced = [...redSpots, ...yellowSpots, ...greenSpots];
+    final balanced = [...redSpots, ...blueSpots, ...yellowSpots, ...greenSpots];
     
-    // Fill remaining slots with highest priority
+    // Fill remaining slots with any remaining active spots
     final remaining = maxSpots - balanced.length;
     if (remaining > 0) {
-      final others = activeSpots
-          .where((s) => !balanced.contains(s))
-          .toList()
-          ..sort((a, b) => _overallPriorityScore(b).compareTo(_overallPriorityScore(a)));
-      balanced.addAll(others.take(remaining));
+      final used = balanced.map((s) => s.id).toSet();
+      final additional = activeSpots.where((s) => !used.contains(s.id)).take(remaining);
+      balanced.addAll(additional);
     }
     
-    return balanced.toList();
+    print('AiPracticeSelector: Returning ${balanced.length} balanced spots (red: ${redSpots.length}, blue: ${blueSpots.length}, yellow: ${yellowSpots.length}, green: ${greenSpots.length})');
+    return balanced.take(maxSpots).toList();
   }
   
   /// Technique Focus: Spots with high failure rate and technical difficulty

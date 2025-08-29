@@ -16,51 +16,22 @@ class DataService {
   /// Get all projects
   Future<List<Project>> getProjects() async {
     final prefs = await SharedPreferences.getInstance();
-    final projectsJson = prefs.getStringList(_projectsKey);
-    
-    // If no data exists, generate and save sample data
-    if (projectsJson == null || projectsJson.isEmpty) {
-      await _generateAndSaveSampleData();
-      final newProjectsJson = prefs.getStringList(_projectsKey) ?? [];
-      return newProjectsJson.map((json) => Project.fromJson(jsonDecode(json))).toList();
-    }
-    
+    final projectsJson = prefs.getStringList(_projectsKey) ?? [];
     return projectsJson.map((json) => Project.fromJson(jsonDecode(json))).toList();
   }
 
   /// Get all pieces
   Future<List<Piece>> getPieces() async {
     final prefs = await SharedPreferences.getInstance();
-    final piecesJson = prefs.getStringList(_piecesKey);
-    
-    // If no data exists, ensure sample data is generated
-    if (piecesJson == null || piecesJson.isEmpty) {
-      await _generateAndSaveSampleData();
-      final newPiecesJson = prefs.getStringList(_piecesKey) ?? [];
-      return newPiecesJson.map((json) => Piece.fromJson(jsonDecode(json))).toList();
-    }
-    
+    final piecesJson = prefs.getStringList(_piecesKey) ?? [];
     return piecesJson.map((json) => Piece.fromJson(jsonDecode(json))).toList();
   }
 
   /// Get all spots
   Future<List<Spot>> getSpots() async {
     final prefs = await SharedPreferences.getInstance();
-    final spotsJson = prefs.getStringList(_spotsKey);
-    
-    // If no data exists, ensure sample data is generated
-    if (spotsJson == null || spotsJson.isEmpty) {
-      await _generateAndSaveSampleData();
-      final newSpotsJson = prefs.getStringList(_spotsKey) ?? [];
-      return newSpotsJson.map((json) => Spot.fromJson(jsonDecode(json))).toList();
-    }
-    
+    final spotsJson = prefs.getStringList(_spotsKey) ?? [];
     return spotsJson.map((json) => Spot.fromJson(jsonDecode(json))).toList();
-  }
-
-  /// Generate and save sample data if none exists
-  Future<void> _generateAndSaveSampleData() async {
-    await createSampleData();
   }
 
   /// Get spots for a specific project
@@ -191,155 +162,7 @@ class DataService {
     await prefs.setStringList(_spotsKey, spotsJson);
   }
 
-  /// Create sample data for testing
-  Future<void> createSampleData() async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    // Check if data already exists
-    if (prefs.containsKey(_projectsKey)) return;
-    
-    final now = DateTime.now();
-    
-    // Create sample project
-    final project = Project(
-      id: 'proj_1',
-      name: 'Spring Recital 2025',
-      description: 'Preparing for spring recital',
-      concertDate: now.add(Duration(days: 30)),
-      pieceIds: ['piece_1', 'piece_2'],
-      dailyPracticeGoal: Duration(minutes: 45),
-      createdAt: now,
-      updatedAt: now,
-    );
-    
-    // Create sample pieces
-    final pieces = [
-      Piece(
-        id: 'piece_1',
-        title: 'Moonlight Sonata',
-        composer: 'Beethoven',
-        difficulty: 4,
-        pdfFilePath: '/path/to/moonlight_sonata.pdf',
-        spots: [],
-        totalPages: 8,
-        createdAt: now,
-        updatedAt: now,
-      ),
-      Piece(
-        id: 'piece_2',
-        title: 'Clair de Lune',
-        composer: 'Debussy',
-        difficulty: 3,
-        pdfFilePath: '/path/to/clair_de_lune.pdf',
-        spots: [],
-        totalPages: 6,
-        createdAt: now,
-        updatedAt: now,
-      ),
-    ];
-    
-    // Create sample spots with varying difficulty and readiness
-    final spots = [
-      // Moonlight Sonata spots
-      Spot(
-        id: 'spot_1',
-        pieceId: 'piece_1',
-        title: 'Opening Adagio',
-        description: 'Measures 1-8',
-        pageNumber: 1,
-        x: 0.1, y: 0.2, width: 0.8, height: 0.3,
-        priority: SpotPriority.high,
-        readinessLevel: ReadinessLevel.learning,
-        color: SpotColor.red,
-        createdAt: now,
-        updatedAt: now,
-        lastPracticed: now.subtract(Duration(days: 3)),
-        nextDue: now.subtract(Duration(days: 1)), // Overdue
-        practiceCount: 5,
-        successCount: 2,
-        failureCount: 3,
-        easeFactor: 1.5,
-        interval: 2,
-        repetitions: 1,
-        recommendedPracticeTime: 10,
-        isActive: true,
-      ),
-      Spot(
-        id: 'spot_2',
-        pieceId: 'piece_1',
-        title: 'Triplet Passage',
-        description: 'Measures 15-22',
-        pageNumber: 2,
-        x: 0.1, y: 0.5, width: 0.8, height: 0.2,
-        priority: SpotPriority.high,
-        readinessLevel: ReadinessLevel.newSpot,
-        color: SpotColor.red,
-        createdAt: now,
-        updatedAt: now,
-        practiceCount: 0,
-        successCount: 0,
-        failureCount: 0,
-        easeFactor: 2.5,
-        interval: 1,
-        repetitions: 0,
-        recommendedPracticeTime: 15,
-        isActive: true,
-      ),
-      // Clair de Lune spots
-      Spot(
-        id: 'spot_3',
-        pieceId: 'piece_2',
-        title: 'Arabesque Section',
-        description: 'Measures 27-35',
-        pageNumber: 3,
-        x: 0.1, y: 0.1, width: 0.8, height: 0.4,
-        priority: SpotPriority.medium,
-        readinessLevel: ReadinessLevel.review,
-        color: SpotColor.yellow,
-        createdAt: now,
-        updatedAt: now,
-        lastPracticed: now.subtract(Duration(days: 5)),
-        nextDue: now.add(Duration(days: 2)),
-        practiceCount: 8,
-        successCount: 6,
-        failureCount: 2,
-        easeFactor: 2.2,
-        interval: 7,
-        repetitions: 3,
-        recommendedPracticeTime: 8,
-        isActive: true,
-      ),
-      Spot(
-        id: 'spot_4',
-        pieceId: 'piece_2',
-        title: 'Gentle Ending',
-        description: 'Measures 65-72',
-        pageNumber: 6,
-        x: 0.1, y: 0.6, width: 0.8, height: 0.3,
-        priority: SpotPriority.low,
-        readinessLevel: ReadinessLevel.mastered,
-        color: SpotColor.green,
-        createdAt: now,
-        updatedAt: now,
-        lastPracticed: now.subtract(Duration(days: 10)),
-        nextDue: now.add(Duration(days: 14)),
-        practiceCount: 12,
-        successCount: 11,
-        failureCount: 1,
-        easeFactor: 2.5,
-        interval: 21,
-        repetitions: 5,
-        recommendedPracticeTime: 5,
-        isActive: true,
-      ),
-    ];
-    
-    // Save sample data
-    await prefs.setStringList(_projectsKey, [jsonEncode(project.toJson())]);
-    await prefs.setStringList(_piecesKey, pieces.map((p) => jsonEncode(p.toJson())).toList());
-    await prefs.setStringList(_spotsKey, spots.map((s) => jsonEncode(s.toJson())).toList());
-  }
-
+  
   /// Add a new project
   Future<void> addProject(Project project) async {
     final prefs = await SharedPreferences.getInstance();
@@ -402,7 +225,6 @@ class ProjectsNotifier extends StateNotifier<AsyncValue<List<Project>>> {
 
   Future<void> _loadProjects() async {
     try {
-      await _dataService.createSampleData(); // Ensure sample data exists
       final projects = await _dataService.getProjects();
       state = AsyncValue.data(projects);
     } catch (error, stackTrace) {

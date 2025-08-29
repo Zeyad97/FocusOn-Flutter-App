@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/piece.dart';
 import '../models/spot.dart';
 import '../models/project.dart';
@@ -713,3 +714,14 @@ class PracticeSessionService {
     return math.max(1, math.min(8, reps)); // Clamp between 1-8 reps
   }
 }
+
+/// Provider for practice session service that uses settings-aware SRS service
+final practiceSessionServiceProvider = Provider<PracticeSessionService>((ref) {
+  final srsService = ref.watch(srsServiceProvider);
+  const readinessService = ReadinessService();
+  
+  return PracticeSessionService(
+    srsService: srsService,
+    readinessService: readinessService,
+  );
+});

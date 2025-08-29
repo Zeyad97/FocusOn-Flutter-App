@@ -5,6 +5,9 @@ import '../../models/project.dart';
 import '../../models/piece.dart';
 import '../../services/data_service.dart';
 import '../../providers/unified_library_provider.dart';
+import '../library/widgets/import_pdf_dialog.dart';
+import 'widgets/project_import_pdf_dialog.dart';
+import '../../utils/snackbar_utils.dart';
 
 class PieceManagementScreen extends ConsumerStatefulWidget {
   final Project project;
@@ -361,28 +364,147 @@ class _PieceManagementScreenState extends ConsumerState<PieceManagementScreen> {
       print('Project updated successfully');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Project updated with ${selectedPieces.length} pieces'),
-            backgroundColor: AppColors.successGreen,
-          ),
-        );
+        SnackBarUtils.showSuccess(context, 'Project updated with ${selectedPieces.length} pieces');
         Navigator.pop(context, true); // Return true to indicate changes were saved
       }
     } catch (e) {
       print('Error saving changes: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save changes: $e'),
-            backgroundColor: AppColors.errorRed,
-          ),
-        );
+        SnackBarUtils.showError(context, 'Failed to save changes: $e');
       }
     }
   }
 
   Future<void> _showAddPieceDialog() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Piece to Project'),
+        content: const Text('How would you like to add a piece?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'library'),
+            child: const Text('From Library'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'file'),
+            child: const Text('Import PDF'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'manual'),
+            child: const Text('Manual Entry'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+
+    switch (choice) {
+      case 'library':
+        await _showLibraryPieceSelector();
+        break;
+      case 'file':
+        await _showImportPDFDialog();
+        break;
+      case 'manual':
+        await _createManualPiece();
+        break;
+    }
+  }
+
+  Future<void> _showLibraryPieceSelector() async {
+    final libraryState = ref.read(unifiedLibraryProvider);
+    if (!libraryState.hasValue) return;
+    
+    final allPieces = libraryState.value!;
+    final availablePieces = allPieces.where(
+      (piece) => !selectedPieces.contains(piece.id)
+    ).toList();
+
+    if (availablePieces.isEmpty) {
+      if (mounted) {
+        SnackBarUtils.showWarning(context, 'All library pieces are already in this project');
+      }
+      return;
+    }
+
+    final selectedPiece = await showDialog<Piece>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select from Library'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: availablePieces.length,
+            itemBuilder: (context, index) {
+              final piece = availablePieces[index];
+              return ListTile(
+                title: Text(piece.title),
+                subtitle: Text(piece.composer),
+                onTap: () => Navigator.pop(context, piece),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedPiece != null) {
+      setState(() {
+        selectedPieces.add(selectedPiece.id);
+        hasChanges = !_setsEqual(selectedPieces, Set.from(widget.project.pieceIds));
+      });
+
+      if (mounted) {
+        SnackBarUtils.showSuccess(context, 'Added "${selectedPiece.title}" to project');
+      }
+    }
+  }
+
+  Future<void> _showImportPDFDialog() async {
+    final newPiece = await showDialog<Piece>(
+      context: context,
+      builder: (context) => ProjectImportPDFDialog(projectId: widget.project.id),
+    );
+
+    if (newPiece != null) {
+      try {
+        // Update piece with project context (inherit project details)
+        final updatedPiece = newPiece.copyWith(
+          projectId: widget.project.id,
+          // Inherit project metadata if available
+          // duration: widget.project.duration,
+          // genre: widget.project.genre,
+          // concertDate: widget.project.concertDate,
+        );
+        
+        await ref.read(unifiedLibraryProvider.notifier).addPiece(updatedPiece);
+        
+        setState(() {
+          selectedPieces.add(updatedPiece.id);
+          hasChanges = !_setsEqual(selectedPieces, Set.from(widget.project.pieceIds));
+        });
+
+        if (mounted) {
+          SnackBarUtils.showSuccess(context, 'Imported "${updatedPiece.title}" and added to project');
+        }
+      } catch (e) {
+        if (mounted) {
+          SnackBarUtils.showError(context, 'Failed to import piece: $e');
+        }
+      }
+    }
+  }
+
+  Future<void> _createManualPiece() async {
     final pieceDetails = await _showPieceDetailsDialog();
     if (pieceDetails == null) return;
 

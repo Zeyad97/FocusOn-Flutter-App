@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/learning_system_service.dart';
 import '../services/review_frequency_service.dart';
 import '../providers/app_settings_provider.dart';
+import '../providers/practice_provider.dart';
+import '../providers/unified_library_provider.dart';
+import '../models/spot.dart';
 import '../theme/app_theme.dart';
 
 class LearningRecommendationsWidget extends ConsumerWidget {
@@ -12,9 +15,22 @@ class LearningRecommendationsWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(appSettingsProvider);
     final learningService = ref.read(learningSystemServiceProvider);
+    final practiceState = ref.watch(practiceProvider);
+    final pieces = ref.watch(unifiedLibraryProvider);
     
-    // For demo purposes, we'll create some mock data
-    final recommendations = learningService.getPracticeRecommendations([], []);
+    // Get real data from practice state and pieces
+    final List<Spot> spots = [
+      ...(practiceState.dailyPlan ?? []),
+      ...(practiceState.urgentSpots ?? []),
+    ];
+    final pieceList = pieces.when(
+      data: (pieceList) => pieceList,
+      loading: () => <String>[],
+      error: (_, __) => <String>[],
+    );
+    
+    // Generate intelligent recommendations based on real data
+    final recommendations = learningService.getPracticeRecommendations(spots, pieceList);
     final sessionStructure = learningService.getSessionStructure(const Duration(minutes: 60));
     
     return Card(
@@ -32,27 +48,35 @@ class LearningRecommendationsWidget extends ConsumerWidget {
                   size: 24,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Learning Recommendations',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'Learning Recommendations',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryPurple.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    settings.learningSystemProfile.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primaryPurple,
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 1,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryPurple.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      settings.learningSystemProfile.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primaryPurple,
+                      ),
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),

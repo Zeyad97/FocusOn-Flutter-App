@@ -4,11 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import '../../models/piece.dart';
 import '../../models/spot.dart';
+import '../../models/annotation.dart' as AppAnnotation;
 import '../../theme/app_theme.dart';
+import '../../services/spot_service.dart';
+import '../../services/annotation_service.dart';
+import '../../providers/unified_library_provider.dart';
 import 'widgets/pdf_toolbar.dart';
 import 'widgets/spot_overlay.dart';
-import 'widgets/annotation_toolbar.dart' show AnnotationToolbar, AnnotationTool, PDFAnnotation, AnnotationPainter, CurrentDrawingPainter;
+import 'widgets/annotation_toolbar.dart';
 import 'widgets/metronome_widget.dart';
+import 'widgets/pdf_zoom_controls.dart';
 
 /// PDF viewing modes for different reading experiences
 enum ViewMode {
@@ -47,11 +52,12 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   int _totalPages = 1;
   double _zoomLevel = 1.0;
   List<Spot> _spots = [];
-  List<PDFAnnotation> _annotations = [];
-  AnnotationTool _selectedTool = AnnotationTool.pen;
-  Color _selectedColor = Colors.red;
-  double _strokeWidth = 2.0;
-  List<Offset> _currentAnnotationPoints = [];
+  
+  // Annotation state
+  AppAnnotation.AnnotationTool _currentTool = AppAnnotation.AnnotationTool.pen;
+  AppAnnotation.ColorTag _currentColor = AppAnnotation.ColorTag.red;
+  List<AppAnnotation.Annotation> _annotations = [];
+  List<Offset> _currentDrawingPoints = [];
   bool _isDrawing = false;
 
   @override
@@ -59,6 +65,10 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     super.initState();
     _pdfController = PdfViewerController();
     _spots = widget.piece.spots;
+    
+    // Load spots and annotations from database
+    _loadSpotsFromDatabase();
+    _loadAnnotationsFromDatabase();
     
     // Navigate to last viewed page if available
     if (widget.piece.lastViewedPage != null) {
@@ -72,6 +82,136 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   void dispose() {
     _pdfController.dispose();
     super.dispose();
+  }
+
+  // Annotation callback methods
+  void _onToolChanged(AppAnnotation.AnnotationTool tool) {
+    setState(() {
+      _currentTool = tool;
+      _currentDrawingPoints.clear();
+      _isDrawing = false;
+    });
+  }
+
+  void _onColorChanged(AppAnnotation.ColorTag color) {
+    setState(() {
+      _currentColor = color;
+    });
+  }
+
+  void _onAnnotationModeToggle() {
+    setState(() {
+      _isAnnotationMode = !_isAnnotationMode;
+      _currentDrawingPoints.clear();
+      _isDrawing = false;
+    });
+  }
+
+  void _onUndo() {
+    if (_annotations.isNotEmpty) {
+      setState(() {
+        _annotations.removeLast();
+      });
+    }
+  }
+
+  void _onRedo() {
+    // TODO: Implement redo functionality
+  }
+
+  void _onClear() {
+    setState(() {
+      _annotations.clear();
+      _currentDrawingPoints.clear();
+      _isDrawing = false;
+    });
+    
+    // Clear annotations from cache (database deletion not implemented yet)
+    _clearAnnotationsFromCache();
+  }
+
+  void _clearAnnotationsFromCache() {
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      annotationService.clearCacheForPiece(widget.piece.id);
+      print('PDFScoreViewer: Cleared annotations cache for piece ${widget.piece.id}');
+    } catch (e) {
+      print('PDFScoreViewer: Error clearing annotations cache: $e');
+    }
+  }
+
+  // Annotation gesture handling
+  void _onPanStart(DragStartDetails details) {
+    if (!_isAnnotationMode) return;
+    
+    setState(() {
+      _isDrawing = true;
+      _currentDrawingPoints.clear();
+      _currentDrawingPoints.add(details.localPosition);
+    });
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    if (!_isAnnotationMode || !_isDrawing) return;
+    
+    setState(() {
+      _currentDrawingPoints.add(details.localPosition);
+    });
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    if (!_isAnnotationMode || !_isDrawing) return;
+    
+    if (_currentDrawingPoints.isNotEmpty) {
+      final annotation = AppAnnotation.Annotation(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        pieceId: widget.piece.id,
+        page: _currentPage,
+        layerId: 'default',
+        tool: _currentTool,
+        colorTag: _currentColor,
+        data: AppAnnotation.VectorPath(
+          points: List.from(_currentDrawingPoints),
+          strokeWidth: _currentTool == AppAnnotation.AnnotationTool.highlighter ? 8.0 : 2.0,
+          color: _getColorFromTag(_currentColor),
+        ),
+        createdAt: DateTime.now(),
+      );
+      
+      setState(() {
+        _annotations.add(annotation);
+        _currentDrawingPoints.clear();
+        _isDrawing = false;
+      });
+      
+      // Save annotation to database
+      _saveAnnotationToDatabase(annotation);
+    }
+  }
+
+  Future<void> _saveAnnotationToDatabase(AppAnnotation.Annotation annotation) async {
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      await annotationService.saveAnnotation(annotation);
+      print('PDFScoreViewer: Saved annotation ${annotation.id} to database');
+    } catch (e) {
+      print('PDFScoreViewer: Error saving annotation to database: $e');
+    }
+  }
+
+  Color _getColorFromTag(AppAnnotation.ColorTag tag) {
+    switch (tag) {
+      case AppAnnotation.ColorTag.red:
+        return Colors.red;
+      case AppAnnotation.ColorTag.blue:
+        return Colors.blue;
+      case AppAnnotation.ColorTag.yellow:
+        return Colors.yellow.shade700;
+      case AppAnnotation.ColorTag.green:
+        return Colors.green;
+      case AppAnnotation.ColorTag.purple:
+        return Colors.purple;
+    }
   }
 
   void _onDocumentLoaded(PdfDocumentLoadedDetails details) {
@@ -137,6 +277,9 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
             _isSpotMode = false; // Exit spot mode after creation
           });
           
+          // Save spot to database so it appears in practice dashboard
+          _saveSpotToDatabase(updatedSpot);
+          
           // Show success message
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -145,66 +288,9 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
               duration: const Duration(seconds: 2),
             ),
           );
-          
-          // TODO: Save to database
         },
       ),
     );
-  }
-
-  // Annotation drawing methods
-  void _onAnnotationPanStart(DragStartDetails details) {
-    if (!_isAnnotationMode) return;
-    
-    setState(() {
-      _isDrawing = true;
-      _currentAnnotationPoints = [details.localPosition];
-    });
-  }
-
-  void _onAnnotationPanUpdate(DragUpdateDetails details) {
-    if (!_isAnnotationMode || !_isDrawing) return;
-    
-    setState(() {
-      _currentAnnotationPoints.add(details.localPosition);
-    });
-  }
-
-  void _onAnnotationPanEnd(DragEndDetails details) {
-    if (!_isAnnotationMode || !_isDrawing) return;
-    
-    if (_currentAnnotationPoints.length > 1) {
-      // Create annotation from current drawing
-      final annotation = PDFAnnotation(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        pageNumber: _currentPage,
-        tool: _selectedTool,
-        color: _selectedColor,
-        strokeWidth: _strokeWidth,
-        points: List.from(_currentAnnotationPoints),
-        createdAt: DateTime.now(),
-      );
-      
-      setState(() {
-        _annotations.add(annotation);
-        _currentAnnotationPoints.clear();
-        _isDrawing = false;
-      });
-      
-      // Show feedback
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${_selectedTool.name.toUpperCase()} annotation added!'),
-          backgroundColor: _selectedColor,
-          duration: const Duration(seconds: 1),
-        ),
-      );
-    } else {
-      setState(() {
-        _currentAnnotationPoints.clear();
-        _isDrawing = false;
-      });
-    }
   }
 
   void _onSpotSelected(Spot spot) {
@@ -214,6 +300,67 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     }
     
     // TODO: Show spot details or practice session
+  }
+
+  Future<void> _saveSpotToDatabase(Spot spot) async {
+    try {
+      final spotService = ref.read(spotServiceProvider);
+      await spotService.saveSpot(spot);
+      print('PDFScoreViewer: Saved spot "${spot.title}" to database');
+      
+      // CRITICAL: Refresh unified library so the spot appears in practice dashboard
+      await ref.read(unifiedLibraryProvider.notifier).refresh();
+      print('PDFScoreViewer: Refreshed unified library after saving spot');
+    } catch (e) {
+      print('PDFScoreViewer: Error saving spot to database: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving spot: $e'),
+            backgroundColor: AppColors.errorRed,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadSpotsFromDatabase() async {
+    try {
+      final spotService = ref.read(spotServiceProvider);
+      final databaseSpots = await spotService.getSpotsForPiece(widget.piece.id);
+      
+      setState(() {
+        // Merge database spots with any existing spots from the piece
+        final allSpots = <Spot>[...widget.piece.spots];
+        
+        // Add database spots that aren't already in the piece
+        for (final dbSpot in databaseSpots) {
+          if (!allSpots.any((spot) => spot.id == dbSpot.id)) {
+            allSpots.add(dbSpot);
+          }
+        }
+        
+        _spots = allSpots;
+      });
+      
+      print('PDFScoreViewer: Loaded ${databaseSpots.length} spots from database for piece ${widget.piece.id}');
+    } catch (e) {
+      print('PDFScoreViewer: Error loading spots from database: $e');
+    }
+  }
+
+  Future<void> _loadAnnotationsFromDatabase() async {
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      final annotations = await annotationService.getAnnotationsForPiece(widget.piece.id);
+      setState(() {
+        _annotations = annotations;
+      });
+      print('PDFScoreViewer: Loaded ${annotations.length} annotations from database for piece ${widget.piece.id}');
+    } catch (e) {
+      print('PDFScoreViewer: Error loading annotations from database: $e');
+    }
   }
 
   Widget _buildPDFViewer() {
@@ -231,10 +378,13 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
         scrollDirection: _viewMode == ViewMode.verticalScroll 
             ? PdfScrollDirection.vertical 
             : PdfScrollDirection.horizontal,
-        enableDoubleTapZooming: true,
+        enableDoubleTapZooming: !_isSpotMode, // Disable zoom in spot mode
         enableTextSelection: false,
         canShowScrollHead: false,
         canShowScrollStatus: false,
+        pageSpacing: 2, // Minimal spacing for smooth page transitions
+        enableDocumentLinkAnnotation: false,
+        interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan, // Allow selection in spot mode
       );
     } else {
       // For demo/asset files
@@ -247,10 +397,13 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
         scrollDirection: _viewMode == ViewMode.verticalScroll 
             ? PdfScrollDirection.vertical 
             : PdfScrollDirection.horizontal,
-        enableDoubleTapZooming: true,
+        enableDoubleTapZooming: !_isSpotMode, // Disable zoom in spot mode
         enableTextSelection: false,
         canShowScrollHead: false,
         canShowScrollStatus: false,
+        pageSpacing: 2, // Minimal spacing for smooth page transitions
+        enableDocumentLinkAnnotation: false,
+        interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan, // Allow selection in spot mode
       );
     }
   }
@@ -284,11 +437,9 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
               onViewModeChanged: (mode) => setState(() => _viewMode = mode),
               onSpotModeToggle: () => setState(() {
                 _isSpotMode = !_isSpotMode;
-                if (_isSpotMode) _isAnnotationMode = false;
               }),
               onAnnotationModeToggle: () => setState(() {
                 _isAnnotationMode = !_isAnnotationMode;
-                if (_isAnnotationMode) _isSpotMode = false;
               }),
               onZoomIn: () => _pdfController.zoomLevel = _pdfController.zoomLevel * 1.25,
               onZoomOut: () => _pdfController.zoomLevel = _pdfController.zoomLevel * 0.8,
@@ -296,6 +447,20 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
               onMetronomeToggle: () => setState(() => _showMetronome = !_showMetronome),
               onClose: () => Navigator.pop(context),
             ),
+            
+            // Annotation toolbar (only show when annotation mode is active)
+            if (_isAnnotationMode)
+              AnnotationToolbar(
+                currentTool: _currentTool,
+                currentColorTag: _currentColor,
+                isAnnotationMode: _isAnnotationMode,
+                onToolChanged: _onToolChanged,
+                onColorChanged: _onColorChanged,
+                onAnnotationModeToggle: _onAnnotationModeToggle,
+                onUndo: _onUndo,
+                onRedo: _onRedo,
+                onClear: _onClear,
+              ),
             
             // Main content area
             Expanded(
@@ -309,11 +474,23 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                         _onSpotTap(details, size);
                       }
                     },
-                    onPanStart: _isAnnotationMode ? _onAnnotationPanStart : null,
-                    onPanUpdate: _isAnnotationMode ? _onAnnotationPanUpdate : null,
-                    onPanEnd: _isAnnotationMode ? _onAnnotationPanEnd : null,
-                    // Prevent gesture conflicts with PDF scrolling
-                    behavior: HitTestBehavior.deferToChild,
+                    onPanStart: (details) {
+                      if (_isAnnotationMode) {
+                        _onPanStart(details);
+                      }
+                    },
+                    onPanUpdate: (details) {
+                      if (_isAnnotationMode) {
+                        _onPanUpdate(details);
+                      }
+                    },
+                    onPanEnd: (details) {
+                      if (_isAnnotationMode) {
+                        _onPanEnd(details);
+                      }
+                    },
+                    // Force gesture detection in spot mode or annotation mode
+                    behavior: (_isSpotMode || _isAnnotationMode) ? HitTestBehavior.opaque : HitTestBehavior.deferToChild,
                     child: Container(
                       decoration: _isSpotMode ? BoxDecoration(
                         border: Border.all(
@@ -324,6 +501,20 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                       child: Stack(
                         children: [
                           _buildPDFViewer(),
+                          
+                          // Annotation overlay
+                          if (_isAnnotationMode)
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: AnnotationOverlayPainter(
+                                  annotations: _annotations.where((a) => a.page == _currentPage).toList(),
+                                  currentDrawingPoints: _currentDrawingPoints,
+                                  currentTool: _currentTool,
+                                  currentColor: _currentColor,
+                                  zoomLevel: _zoomLevel,
+                                ),
+                              ),
+                            ),
                           
                           // Spot mode overlay instruction
                           if (_isSpotMode)
@@ -345,8 +536,8 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                                 ),
                               ),
                             ),
-                            
-                          // Annotation mode overlay instruction  
+                          
+                          // Annotation mode overlay instruction
                           if (_isAnnotationMode)
                             Positioned(
                               top: 20,
@@ -357,15 +548,16 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                                   color: AppColors.primaryBlue.withOpacity(0.9),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: const Text(
-                                  '✏️ Draw on the PDF with your finger',
-                                  style: TextStyle(
+                                child: Text(
+                                  '✏️ ${_currentTool.name.toUpperCase()} mode - Draw on the score',
+                                  style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ),
                             ),
+                            
                         ],
                       ),
                     ),
@@ -406,76 +598,6 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                       ),
                     ),
                   
-                  // Annotation canvas overlay
-                  if (_isAnnotationMode)
-                    Positioned.fill(
-                      child: CustomPaint(
-                        painter: AnnotationPainter(
-                          annotations: _annotations.where((a) => a.pageNumber == _currentPage).toList(),
-                          zoomLevel: _zoomLevel,
-                        ),
-                      ),
-                    ),
-                  
-                  // Current drawing overlay
-                  if (_isAnnotationMode && _isDrawing && _currentAnnotationPoints.isNotEmpty)
-                    Positioned.fill(
-                      child: CustomPaint(
-                        painter: CurrentDrawingPainter(
-                          points: _currentAnnotationPoints,
-                          color: _selectedColor,
-                          strokeWidth: _strokeWidth,
-                        ),
-                      ),
-                    ),
-                  
-                  // Annotation toolbar
-                  if (_isAnnotationMode)
-                    Positioned(
-                      bottom: 16,
-                      left: 16,
-                      right: 16,
-                      child: AnnotationToolbar(
-                        selectedTool: _selectedTool,
-                        selectedColor: _selectedColor,
-                        strokeWidth: _strokeWidth,
-                        canUndo: _annotations.isNotEmpty,
-                        onToolChanged: (tool) {
-                          setState(() {
-                            _selectedTool = tool;
-                          });
-                        },
-                        onColorChanged: (color) {
-                          setState(() {
-                            _selectedColor = color;
-                          });
-                        },
-                        onStrokeWidthChanged: (width) {
-                          setState(() {
-                            _strokeWidth = width;
-                          });
-                        },
-                        onUndo: () {
-                          setState(() {
-                            if (_annotations.isNotEmpty) {
-                              _annotations.removeLast();
-                            }
-                          });
-                        },
-                        onClear: () {
-                          setState(() {
-                            _annotations.removeWhere((a) => a.pageNumber == _currentPage);
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Annotations cleared for this page'),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  
                   // Metronome widget
                   if (_showMetronome)
                     Positioned(
@@ -486,6 +608,37 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                         onClose: () => setState(() => _showMetronome = false),
                       ),
                     ),
+                  
+                  // Enhanced zoom controls
+                  Positioned(
+                    bottom: 20,
+                    right: 20,
+                    child: PDFZoomControls(
+                      zoomLevel: _zoomLevel,
+                      onZoomIn: () {
+                        final newZoom = (_zoomLevel * 1.25).clamp(0.25, 5.0);
+                        _pdfController.zoomLevel = newZoom;
+                        setState(() => _zoomLevel = newZoom);
+                      },
+                      onZoomOut: () {
+                        final newZoom = (_zoomLevel * 0.8).clamp(0.25, 5.0);
+                        _pdfController.zoomLevel = newZoom;
+                        setState(() => _zoomLevel = newZoom);
+                      },
+                      onFitWidth: () {
+                        _pdfController.zoomLevel = 1.0;
+                        setState(() => _zoomLevel = 1.0);
+                      },
+                      onFitHeight: () {
+                        _pdfController.zoomLevel = 1.2;
+                        setState(() => _zoomLevel = 1.2);
+                      },
+                      onActualSize: () {
+                        _pdfController.zoomLevel = 1.0;
+                        setState(() => _zoomLevel = 1.0);
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -597,5 +750,133 @@ class DemoScoreViewer extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Custom painter for rendering annotations and current drawing
+class AnnotationOverlayPainter extends CustomPainter {
+  final List<AppAnnotation.Annotation> annotations;
+  final List<Offset> currentDrawingPoints;
+  final AppAnnotation.AnnotationTool currentTool;
+  final AppAnnotation.ColorTag currentColor;
+  final double zoomLevel;
+
+  AnnotationOverlayPainter({
+    required this.annotations,
+    required this.currentDrawingPoints,
+    required this.currentTool,
+    required this.currentColor,
+    required this.zoomLevel,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Draw existing annotations
+    for (final annotation in annotations) {
+      _drawAnnotation(canvas, annotation, size);
+    }
+
+    // Draw current drawing stroke
+    if (currentDrawingPoints.isNotEmpty) {
+      _drawCurrentStroke(canvas, size);
+    }
+  }
+
+  void _drawAnnotation(Canvas canvas, AppAnnotation.Annotation annotation, Size size) {
+    final paint = Paint()
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    switch (annotation.tool) {
+      case AppAnnotation.AnnotationTool.pen:
+        paint
+          ..color = _getColorFromTag(annotation.colorTag)
+          ..strokeWidth = 2.0 * zoomLevel
+          ..style = PaintingStyle.stroke;
+        break;
+      case AppAnnotation.AnnotationTool.highlighter:
+        paint
+          ..color = _getColorFromTag(annotation.colorTag).withOpacity(0.3)
+          ..strokeWidth = 8.0 * zoomLevel
+          ..style = PaintingStyle.stroke;
+        break;
+      default:
+        paint
+          ..color = _getColorFromTag(annotation.colorTag)
+          ..strokeWidth = 2.0 * zoomLevel
+          ..style = PaintingStyle.stroke;
+        break;
+    }
+
+    if (annotation.data is AppAnnotation.VectorPath) {
+      final vectorPath = annotation.data as AppAnnotation.VectorPath;
+      _drawPath(canvas, vectorPath.points, paint, size);
+    }
+  }
+
+  void _drawCurrentStroke(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    switch (currentTool) {
+      case AppAnnotation.AnnotationTool.pen:
+        paint
+          ..color = _getColorFromTag(currentColor)
+          ..strokeWidth = 2.0 * zoomLevel
+          ..style = PaintingStyle.stroke;
+        break;
+      case AppAnnotation.AnnotationTool.highlighter:
+        paint
+          ..color = _getColorFromTag(currentColor).withOpacity(0.3)
+          ..strokeWidth = 8.0 * zoomLevel
+          ..style = PaintingStyle.stroke;
+        break;
+      default:
+        paint
+          ..color = _getColorFromTag(currentColor)
+          ..strokeWidth = 2.0 * zoomLevel
+          ..style = PaintingStyle.stroke;
+        break;
+    }
+
+    _drawPath(canvas, currentDrawingPoints, paint, size);
+  }
+
+  void _drawPath(Canvas canvas, List<Offset> points, Paint paint, Size size) {
+    if (points.length < 2) return;
+
+    final path = Path();
+    path.moveTo(points.first.dx, points.first.dy);
+    
+    for (int i = 1; i < points.length; i++) {
+      path.lineTo(points[i].dx, points[i].dy);
+    }
+
+    canvas.drawPath(path, paint);
+  }
+
+  Color _getColorFromTag(AppAnnotation.ColorTag tag) {
+    switch (tag) {
+      case AppAnnotation.ColorTag.red:
+        return Colors.red;
+      case AppAnnotation.ColorTag.blue:
+        return Colors.blue;
+      case AppAnnotation.ColorTag.yellow:
+        return Colors.yellow.shade700;
+      case AppAnnotation.ColorTag.green:
+        return Colors.green;
+      case AppAnnotation.ColorTag.purple:
+        return Colors.purple;
+    }
+  }
+
+  @override
+  bool shouldRepaint(AnnotationOverlayPainter oldDelegate) {
+    return annotations != oldDelegate.annotations ||
+           currentDrawingPoints != oldDelegate.currentDrawingPoints ||
+           currentTool != oldDelegate.currentTool ||
+           currentColor != oldDelegate.currentColor ||
+           zoomLevel != oldDelegate.zoomLevel;
   }
 }

@@ -121,7 +121,7 @@ class _EnhancedCardState extends State<EnhancedCard>
                 margin: widget.margin ?? const EdgeInsets.all(8),
                 padding: widget.padding ?? const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: widget.backgroundColor ?? Colors.white,
+                  color: widget.backgroundColor ?? Theme.of(context).colorScheme.surface,
                   borderRadius: widget.borderRadius ?? BorderRadius.circular(12),
                   boxShadow: widget.boxShadow ?? [
                     BoxShadow(
@@ -232,7 +232,7 @@ class _EnhancedButtonState extends State<EnhancedButton>
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: widget.isLoading
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
@@ -351,7 +351,7 @@ class _EnhancedSearchBarState extends State<EnhancedSearchBar>
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: _isFocused 
@@ -626,6 +626,7 @@ class EnhancedFAB extends StatelessWidget {
           ],
         ),
         child: FloatingActionButton.extended(
+          heroTag: "enhanced_fab_${onPressed.hashCode}", // Unique hero tag
           onPressed: () {
             FeedbackSystem.medium();
             onPressed();
@@ -648,6 +649,7 @@ class EnhancedFAB extends StatelessWidget {
       );
     } else {
       return FloatingActionButton(
+        heroTag: "enhanced_fab_${onPressed.hashCode}", // Unique hero tag
         onPressed: () {
           FeedbackSystem.medium();
           onPressed();
