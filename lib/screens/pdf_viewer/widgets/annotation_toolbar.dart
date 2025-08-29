@@ -72,6 +72,13 @@ class AnnotationToolbar extends StatelessWidget {
                   tooltip: 'Highlighter',
                 ),
                 _ToolButton(
+                  tool: AnnotationTool.eraser,
+                  currentTool: currentTool,
+                  onPressed: () => onToolChanged(AnnotationTool.eraser),
+                  icon: Icons.cleaning_services,
+                  tooltip: 'Eraser',
+                ),
+                _ToolButton(
                   tool: AnnotationTool.text,
                   currentTool: currentTool,
                   onPressed: () => onToolChanged(AnnotationTool.text),

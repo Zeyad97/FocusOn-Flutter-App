@@ -5,7 +5,6 @@ import '../../../utils/feedback_system.dart';
 import '../../../utils/animations.dart';
 import '../../../widgets/enhanced_components.dart';
 import '../pdf_score_viewer.dart';
-import 'bookmark_manager.dart';
 
 /// Top toolbar for PDF Score Viewer with controls
 class PDFToolbar extends StatelessWidget {
@@ -154,11 +153,6 @@ class PDFToolbar extends StatelessWidget {
             onPressed: onSpotModeToggle,
           ),
           _ActionButton(
-            icon: Icons.bookmark,
-            label: 'Bookmarks',
-            onPressed: () => _showBookmarkManager(context),
-          ),
-          _ActionButton(
             icon: Icons.edit,
             label: 'Annotate',
             onPressed: onAnnotationModeToggle,
@@ -168,11 +162,6 @@ class PDFToolbar extends StatelessWidget {
             icon: Icons.speed,
             label: 'Metronome',
             onPressed: onMetronomeToggle,
-          ),
-          _ActionButton(
-            icon: Icons.search,
-            label: 'Search',
-            onPressed: () => _showSearchDialog(context),
           ),
           
           const SizedBox(width: 16),
@@ -220,47 +209,6 @@ class PDFToolbar extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showSearchDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text('Search in Document'),
-        content: const TextField(
-          decoration: InputDecoration(
-            hintText: 'Enter search text...',
-            prefixIcon: Icon(Icons.search),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Search'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showBookmarkManager(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => BookmarkManager(
-        piece: piece,
-        currentPage: currentPage,
-        onNavigateToPage: onPageChanged,
       ),
     );
   }

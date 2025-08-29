@@ -9,6 +9,7 @@ import '../../models/annotation.dart' as AppAnnotation;
 import '../../theme/app_theme.dart';
 import '../../services/spot_service.dart';
 import '../../services/annotation_service.dart';
+import '../../services/piece_service.dart';
 import '../../providers/unified_library_provider.dart';
 import 'widgets/pdf_toolbar.dart';
 import 'widgets/spot_overlay.dart';
@@ -149,23 +150,42 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   void _onPanStart(DragStartDetails details) {
     if (!_isAnnotationMode) return;
     
-    setState(() {
-      _isDrawing = true;
-      _currentDrawingPoints.clear();
-      _currentDrawingPoints.add(details.localPosition);
-    });
+    if (_currentTool == AppAnnotation.AnnotationTool.eraser) {
+      // Eraser mode - find and remove annotations at this position
+      _eraseAnnotationsAt(details.localPosition);
+    } else {
+      // Drawing mode
+      setState(() {
+        _isDrawing = true;
+        _currentDrawingPoints.clear();
+        _currentDrawingPoints.add(details.localPosition);
+      });
+    }
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
-    if (!_isAnnotationMode || !_isDrawing) return;
+    if (!_isAnnotationMode) return;
     
-    setState(() {
-      _currentDrawingPoints.add(details.localPosition);
-    });
+    if (_currentTool == AppAnnotation.AnnotationTool.eraser) {
+      // Continue erasing
+      _eraseAnnotationsAt(details.localPosition);
+    } else if (_isDrawing) {
+      // Continue drawing
+      setState(() {
+        _currentDrawingPoints.add(details.localPosition);
+      });
+    }
   }
 
   void _onPanEnd(DragEndDetails details) {
-    if (!_isAnnotationMode || !_isDrawing) return;
+    if (!_isAnnotationMode) return;
+    
+    if (_currentTool == AppAnnotation.AnnotationTool.eraser) {
+      // Eraser finished
+      return;
+    }
+    
+    if (!_isDrawing) return;
     
     if (_currentDrawingPoints.isNotEmpty) {
       final annotation = AppAnnotation.Annotation(
@@ -192,6 +212,27 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
       // Save annotation to database
       _saveAnnotationToDatabase(annotation);
     }
+  }
+
+  void _eraseAnnotationsAt(Offset position) {
+    const double eraserRadius = 20.0; // Eraser radius in pixels
+    
+    setState(() {
+      _annotations.removeWhere((annotation) {
+        if (annotation.page != _currentPage) return false;
+        
+        // Check if annotation intersects with eraser position
+        if (annotation.vectorPath != null) {
+          final path = annotation.vectorPath!;
+          return path.points.any((point) {
+            final distance = (point - position).distance;
+            return distance <= eraserRadius;
+          });
+        }
+        
+        return false;
+      });
+    });
   }
 
   Future<void> _saveAnnotationToDatabase(AppAnnotation.Annotation annotation) async {
@@ -223,6 +264,28 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     setState(() {
       _totalPages = details.document.pages.count;
     });
+    
+    // Update piece with correct page count if it's different
+    if (widget.piece.totalPages != _totalPages) {
+      print('PDFScoreViewer: Updating piece page count from ${widget.piece.totalPages} to $_totalPages');
+      _updatePiecePageCount(_totalPages);
+    }
+  }
+  
+  Future<void> _updatePiecePageCount(int actualPageCount) async {
+    try {
+      final updatedPiece = widget.piece.copyWith(
+        totalPages: actualPageCount,
+        updatedAt: DateTime.now(),
+      );
+      
+      final pieceService = ref.read(pieceServiceProvider);
+      await pieceService.savePiece(updatedPiece);
+      
+      print('PDFScoreViewer: Successfully updated piece page count to $actualPageCount');
+    } catch (e) {
+      print('PDFScoreViewer: Failed to update piece page count: $e');
+    }
   }
 
   void _onPageChanged(PdfPageChangedDetails details) {
@@ -498,7 +561,7 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     
     // Check if we have a valid file path
     if (pdfPath != null && pdfPath.isNotEmpty && !pdfPath.startsWith('assets/')) {
-      // For actual file imports
+      // For actual file imports - optimized for performance
       return SfPdfViewer.file(
         File(pdfPath),
         controller: _pdfController,
@@ -512,9 +575,14 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
         enableTextSelection: false,
         canShowScrollHead: false,
         canShowScrollStatus: false,
-        pageSpacing: 2, // Minimal spacing for smooth page transitions
+        pageSpacing: 0, // No spacing for smooth scrolling
         enableDocumentLinkAnnotation: false,
-        interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan, // Use selection mode for better tap detection in spot mode
+        interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan,
+        // Performance optimizations
+        canShowPaginationDialog: false,
+        enableHyperlinkNavigation: false,
+        canShowPasswordDialog: false,
+        initialScrollOffset: Offset.zero,
       );
     } else {
       // For demo/asset files
@@ -531,9 +599,14 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
         enableTextSelection: false,
         canShowScrollHead: false,
         canShowScrollStatus: false,
-        pageSpacing: 2, // Minimal spacing for smooth page transitions
+        pageSpacing: 0, // No spacing for smooth scrolling
         enableDocumentLinkAnnotation: false,
-        interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan, // Use selection mode for better tap detection in spot mode
+        interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan,
+        // Performance optimizations
+        canShowPaginationDialog: false,
+        enableHyperlinkNavigation: false,
+        canShowPasswordDialog: false,
+        initialScrollOffset: Offset.zero,
       );
     }
   }

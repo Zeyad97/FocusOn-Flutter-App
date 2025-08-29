@@ -1174,9 +1174,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             
             print('LibraryScreen: addPiece completed successfully');
             
-            // CRITICAL FIX: Create an immediate practice spot for the imported piece
-            // This ensures the imported PDF appears in the AI practice dashboard
-            await _createInitialPracticeSpot(piece);
+            // Don't auto-create practice spots - let users create them manually
             
             if (mounted) {
               // Show enhanced success feedback
@@ -1300,6 +1298,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   /// Create an initial practice spot for imported pieces to ensure they appear in AI dashboard
+  /// DISABLED: Auto-spot creation removed per user request
+  /*
   Future<void> _createInitialPracticeSpot(Piece piece) async {
     try {
       print('LibraryScreen: Creating initial practice spot for imported piece ${piece.id}');
@@ -1337,6 +1337,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       print('LibraryScreen: Error creating initial practice spot: $e');
     }
   }
+  */
 
   void _importFromCloud() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1388,6 +1389,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   /// Create initial practice spot for imported piece
+  /// DISABLED: Auto-spot creation removed per user request (duplicate method)
+  /*
   Future<void> _createInitialPracticeSpot(Piece piece) async {
     try {
       // Create a default "Full Piece" spot for immediate practice availability
@@ -1417,4 +1420,5 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       // Don't throw - spot creation is optional for import success
     }
   }
+  */
 }

@@ -59,7 +59,7 @@ class PDFScoreService {
         thumbnailPath: thumbnailPath,
         targetTempo: metadata['tempo']?.toDouble(),
         currentTempo: metadata['tempo']?.toDouble(),
-        totalPages: await getPDFPageCount(targetFile.path) ?? 4,
+        totalPages: await getPDFPageCount(targetFile.path) ?? 1,
         spots: [],
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -201,11 +201,46 @@ class PDFScoreService {
   /// Get PDF page count
   static Future<int?> getPDFPageCount(String filePath) async {
     try {
-      // TODO: Implement actual PDF page count detection
-      // For now, return a reasonable default
-      return 4;
+      // Try to get actual page count by reading PDF file
+      final file = File(filePath);
+      if (!await file.exists()) return null;
+      
+      // Read PDF content to extract page count
+      final bytes = await file.readAsBytes();
+      final content = String.fromCharCodes(bytes);
+      
+      // Look for PDF page count indicators
+      // Method 1: Count /Type /Page entries
+      final pagePattern = RegExp(r'/Type\s*/Page\b');
+      final pageMatches = pagePattern.allMatches(content);
+      int pageCount = pageMatches.length;
+      
+      // Method 2: Look for /Count entry in Pages object
+      if (pageCount == 0) {
+        final countPattern = RegExp(r'/Count\s+(\d+)');
+        final countMatch = countPattern.firstMatch(content);
+        if (countMatch != null) {
+          pageCount = int.tryParse(countMatch.group(1) ?? '0') ?? 0;
+        }
+      }
+      
+      // Method 3: Look for PDF page references
+      if (pageCount == 0) {
+        final objPattern = RegExp(r'\d+\s+0\s+obj');
+        final objMatches = objPattern.allMatches(content);
+        // Rough estimate: typically 1-3 objects per page
+        pageCount = (objMatches.length / 2).ceil();
+      }
+      
+      // Ensure reasonable bounds
+      if (pageCount <= 0) pageCount = 1;
+      if (pageCount > 200) pageCount = 200; // Sanity check
+      
+      debugPrint('PDF page count detected: $pageCount pages for $filePath');
+      return pageCount;
     } catch (e) {
       debugPrint('Error getting PDF page count: $e');
+      // Return null to let Syncfusion handle it
       return null;
     }
   }

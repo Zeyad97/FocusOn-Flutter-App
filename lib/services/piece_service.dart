@@ -18,10 +18,7 @@ class PieceService {
       await _databaseService.insertPiece(piece);
       print('PieceService: Piece saved successfully to database');
       
-      // Create a default practice spot if the piece has no spots
-      if (piece.spots.isEmpty) {
-        await _createDefaultSpot(piece);
-      }
+      // Don't auto-create spots - let users create them manually
     } catch (e) {
       if (e.toString().contains('has no column named')) {
         print('PieceService: Database schema mismatch, recreating database...');
@@ -29,45 +26,13 @@ class PieceService {
         // Retry the insert
         await _databaseService.insertPiece(piece);
         print('PieceService: Piece saved successfully after database recreation');
-        
-        // Create default spot after successful save
-        if (piece.spots.isEmpty) {
-          await _createDefaultSpot(piece);
-        }
       } else {
         rethrow;
       }
     }
   }
   
-  Future<void> _createDefaultSpot(Piece piece) async {
-    try {
-      // Create a default "Full Piece" spot
-      final defaultSpot = Spot(
-        id: 'default_${piece.id}_${DateTime.now().millisecondsSinceEpoch}',
-        pieceId: piece.id,
-        title: 'Full Piece',
-        description: 'Practice the entire piece',
-        pageNumber: 1,
-        x: 0.0,
-        y: 0.0,
-        width: 1.0,
-        height: 1.0,
-        priority: SpotPriority.medium,
-        readinessLevel: ReadinessLevel.learning,
-        color: SpotColor.blue, // Default to practice (blue)
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-      
-      // Save the spot to database using DatabaseService
-      await _databaseService.insertSpot(defaultSpot);
-      print('PieceService: Created default practice spot for piece "${piece.title}"');
-    } catch (e) {
-      print('PieceService: Failed to create default spot: $e');
-      // Don't throw - spot creation is optional
-    }
-  }
+  // Removed _createDefaultSpot method - no longer auto-creating spots
   
   Future<Piece?> getPiece(String id) async {
     return await _databaseService.getPieceById(id);
@@ -92,7 +57,7 @@ class PieceService {
     if (piece == null) return null;
     
     // Get spots for this piece
-    final spots = await _databaseService.getSpotsForPiece(id);
+    final spots = await spotService.getSpotsForPiece(id);
     
     // Create piece with real spots data
     return piece.copyWith(
@@ -106,17 +71,10 @@ class PieceService {
     final piecesWithProgress = <Piece>[];
     
     for (final piece in pieces) {
-      final spots = await _databaseService.getSpotsForPiece(piece.id);
+      final spots = await spotService.getSpotsForPiece(piece.id);
       
-      // If piece has no spots, create a default one
-      if (spots.isEmpty) {
-        await _createDefaultSpot(piece);
-        // Reload spots after creating default spot
-        final updatedSpots = await _databaseService.getSpotsForPiece(piece.id);
-        piecesWithProgress.add(piece.copyWith(spots: updatedSpots));
-      } else {
-        piecesWithProgress.add(piece.copyWith(spots: spots));
-      }
+      // Don't auto-create spots - pieces can exist without spots
+      piecesWithProgress.add(piece.copyWith(spots: spots));
     }
     
     return piecesWithProgress;
