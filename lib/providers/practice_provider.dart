@@ -20,17 +20,13 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
       final databaseService = ref.read(databaseServiceProvider);
       final spotService = ref.read(spotServiceProvider);
       
-      // Get ALL active spots from database (not just unified library pieces)
-      final allActiveSpots = await spotService.getAllActiveSpots();
-      print('PracticeProvider: Found ${allActiveSpots.length} total active spots in database');
-      
-      // Also get pieces from unified library for additional context
+      // Get pieces from unified library (only imported pieces in music library)
       final asyncPieces = ref.read(unifiedLibraryProvider);
       List<Spot> librarySpots = [];
       
       await asyncPieces.when(
         data: (pieces) async {
-          print('PracticeProvider: Found ${pieces.length} pieces in unified library');
+          print('PracticeProvider: Found ${pieces.length} pieces in music library');
           for (final piece in pieces) {
             print('  - ${piece.title} (${piece.spots.length} spots)');
             librarySpots.addAll(piece.spots);
@@ -42,13 +38,12 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
         },
       );
       
-      print('PracticeProvider: Library spots: ${librarySpots.length}, Database spots: ${allActiveSpots.length}');
-      print('PracticeProvider: Using database spots for accurate counts: ${allActiveSpots.length}');
+      print('PracticeProvider: Using only library spots for AI-optimized practice plan: ${librarySpots.length}');
       
-      // Use ALL database spots for accurate counts
-      final dailyPlan = _generateDailyPlanFromSpots(allActiveSpots);
-      final urgentSpots = _getUrgentSpotsFromSpots(allActiveSpots);
-      final stats = await _getRealPracticeStats(databaseService, allActiveSpots);
+      // Use ONLY library spots (from imported pieces) for AI-optimized practice plan
+      final dailyPlan = _generateDailyPlanFromSpots(librarySpots);
+      final urgentSpots = _getUrgentSpotsFromSpots(librarySpots);
+      final stats = await _getRealPracticeStats(databaseService, librarySpots);
       
       state = PracticeState.loaded(
         dailyPlan: dailyPlan,
@@ -62,15 +57,33 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
   }
   
   List<Spot> _generateDailyPlanFromSpots(List<Spot> allSpots) {
-    // Filter spots that are due for practice
-    final dueSpots = allSpots.where((spot) => spot.isDue).toList();
+    print('PracticeProvider: Generating daily plan from ${allSpots.length} spots');
+    for (final spot in allSpots) {
+      print('  Spot: ${spot.title} - isDue: ${spot.isDue}, nextDue: ${spot.nextDue}, readinessLevel: ${spot.readinessLevel}, color: ${spot.color}, urgencyScore: ${spot.urgencyScore}');
+    }
     
-    // Sort by urgency (highest priority first)
-    dueSpots.sort((a, b) => b.urgencyScore.compareTo(a.urgencyScore));
+    // For newly imported pieces: include ALL spots in daily plan
+    // This ensures new pieces show up in "Today's Practice Plan"
+    
+    if (allSpots.isEmpty) {
+      print('PracticeProvider: No spots to generate daily plan from');
+      return [];
+    }
+    
+    // Sort by urgency (highest priority first) 
+    allSpots.sort((a, b) => b.urgencyScore.compareTo(a.urgencyScore));
+    
+    print('PracticeProvider: After sorting by urgency:');
+    for (final spot in allSpots) {
+      print('  Sorted spot: ${spot.title} - urgencyScore: ${spot.urgencyScore}');
+    }
     
     // Return up to 20 spots for manageable daily practice
-    final dailyPlan = dueSpots.take(20).toList();
-    print('PracticeProvider: Generated daily plan with ${dailyPlan.length} spots');
+    final dailyPlan = allSpots.take(20).toList();
+    print('PracticeProvider: Generated daily plan with ${dailyPlan.length} spots from ${allSpots.length} total');
+    for (final spot in dailyPlan) {
+      print('  Daily plan spot: ${spot.title}');
+    }
     
     return dailyPlan;
   }
@@ -100,6 +113,14 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
     final recentSessions = await databaseService.getRecentPracticeSessions(days: 7);
     final todaySessions = await databaseService.getTodayPracticeSessions();
     
+    print('[PracticeProvider] DEBUG: Found ${todaySessions.length} today sessions');
+    for (final session in todaySessions) {
+      print('[PracticeProvider] DEBUG: Session ${session.id} - Status: ${session.status}, Duration: ${session.actualDuration?.inMinutes ?? 0} min, Spots: ${session.spotSessions.length}');
+      for (final spotSession in session.spotSessions) {
+        print('[PracticeProvider] DEBUG:   Spot ${spotSession.spotId} - Status: ${spotSession.status}, Duration: ${spotSession.actualDuration?.inMinutes ?? 0} min');
+      }
+    }
+    
     // Calculate real statistics using the ACTIVE spots
     final totalSpots = activeSpots.length;
     final dueSpots = activeSpots.where((s) => s.isDue).length;
@@ -118,6 +139,8 @@ class PracticeNotifier extends StateNotifier<PracticeState> {
       <String>{},
       (spots, session) => spots..addAll(session.spotSessions.map((s) => s.spotId)),
     ).length;
+    
+    print('[PracticeProvider] DEBUG: Calculated today practice time: $todayPracticeTime min, spots practiced: $todaySpotsPracticed');
     
     // Weekly real practice data
     final weeklyPracticeTime = recentSessions.fold<int>(

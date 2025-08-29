@@ -234,7 +234,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.7),
                           fontWeight: FontWeight.w500,
-                          fontSize: 16,
+                          fontSize: 15, // Reduced to fix overflow
                         ),
                       ),
                       Text(
@@ -242,7 +242,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 28,
+                          fontSize: 24, // Reduced to fix overflow
                         ),
                       ),
                     ],

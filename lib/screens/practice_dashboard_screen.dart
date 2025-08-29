@@ -589,35 +589,7 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
             ],
           ),
         ),
-        trailing: GestureDetector(
-          onTap: () => _adjustPracticeTime(spot),
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${spot.recommendedPracticeTime}min',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    fontSize: 12,
-                  ),
-                ),
-                SizedBox(width: 4),
-                Icon(
-                  Icons.edit,
-                  size: 12,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
-              ],
-            ),
-          ),
-        ),
+        trailing: SizedBox.shrink(), // Remove the time display as requested
         onTap: () => _openSpotInPdf(spot),
       ),
     );

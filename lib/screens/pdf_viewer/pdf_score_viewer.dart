@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import '../../models/piece.dart';
@@ -52,6 +53,10 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   int _totalPages = 1;
   double _zoomLevel = 1.0;
   List<Spot> _spots = [];
+  
+  // Spot movement state
+  Spot? _selectedSpotForMoving;
+  Offset? _spotDragStartPosition;
   
   // Annotation state
   AppAnnotation.AnnotationTool _currentTool = AppAnnotation.AnnotationTool.pen;
@@ -227,21 +232,35 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     // TODO: Save page to database
   }
 
-  void _onSpotTap(TapUpDetails details, Size size) {
+  void _onSpotTap(dynamic details, Size size) {
+    print('PDFScoreViewer: Tap detected - isSpotMode: $_isSpotMode');
     if (!_isSpotMode) return;
 
-    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
+    // Get local position from either TapUpDetails or TapDownDetails
+    final Offset localPosition;
+    if (details is TapUpDetails) {
+      localPosition = details.localPosition;
+    } else if (details is TapDownDetails) {
+      localPosition = details.localPosition;
+    } else {
+      print('PDFScoreViewer: Unknown details type: ${details.runtimeType}');
+      return;
+    }
     
-    final localPosition = renderBox.globalToLocal(details.globalPosition);
+    print('PDFScoreViewer: Local position: $localPosition, Container size: $size');
     
-    // Convert to relative coordinates (0.0 to 1.0)
+    // Convert to relative coordinates (0.0 to 1.0) based on the actual container size
     final x = localPosition.dx / size.width;
     final y = localPosition.dy / size.height;
 
-    // Ensure coordinates are within bounds
+    print('PDFScoreViewer: Relative coordinates: ($x, $y)');
+
+    // Ensure coordinates are within bounds and allow unlimited spot creation
     if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+      print('PDFScoreViewer: Creating spot at coordinates: ($x, $y) on page $_currentPage');
       _showSpotCreationDialog(x, y);
+    } else {
+      print('PDFScoreViewer: Coordinates out of bounds: ($x, $y)');
     }
   }
 
@@ -274,7 +293,8 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
           
           setState(() {
             _spots.add(updatedSpot);
-            _isSpotMode = false; // Exit spot mode after creation
+            // Don't exit spot mode - allow continuous spot creation
+            // User can manually exit spot mode when done
           });
           
           // Save spot to database so it appears in practice dashboard
@@ -323,6 +343,116 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
         );
       }
     }
+  }
+
+  // Spot movement methods
+  void _onSpotLongPress(LongPressStartDetails details) {
+    if (!_isSpotMode) return;
+    
+    final localPosition = details.localPosition;
+    print('PDFScoreViewer: Long press detected at $localPosition');
+    
+    // Find if there's a spot at this position
+    final tappedSpot = _findSpotAtPosition(localPosition);
+    if (tappedSpot != null) {
+      setState(() {
+        _selectedSpotForMoving = tappedSpot;
+        _spotDragStartPosition = localPosition;
+      });
+      print('PDFScoreViewer: Selected spot "${tappedSpot.title}" for moving');
+      
+      // Show feedback
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Selected "${tappedSpot.title}" - drag to move'),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _onSpotDragStart(DragStartDetails details) {
+    if (_selectedSpotForMoving == null) return;
+    _spotDragStartPosition = details.localPosition;
+    print('PDFScoreViewer: Starting to drag spot "${_selectedSpotForMoving!.title}"');
+  }
+
+  void _onSpotDragUpdate(DragUpdateDetails details) {
+    if (_selectedSpotForMoving == null) return;
+    
+    // Visual feedback could be added here (like updating spot position in real-time)
+    print('PDFScoreViewer: Dragging spot to ${details.localPosition}');
+  }
+
+  void _onSpotDragEnd(DragEndDetails details) {
+    if (_selectedSpotForMoving == null || _spotDragStartPosition == null) return;
+    
+    final size = context.size!;
+    final newPosition = _spotDragStartPosition!; // Use the last known position
+    
+    // Convert to relative coordinates
+    final x = newPosition.dx / size.width;
+    final y = newPosition.dy / size.height;
+    
+    if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+      print('PDFScoreViewer: Moving spot "${_selectedSpotForMoving!.title}" to ($x, $y)');
+      
+      // Update the spot position
+      final updatedSpot = _selectedSpotForMoving!.copyWith(
+        x: x,
+        y: y,
+        updatedAt: DateTime.now(),
+      );
+      
+      setState(() {
+        final index = _spots.indexWhere((s) => s.id == _selectedSpotForMoving!.id);
+        if (index != -1) {
+          _spots[index] = updatedSpot;
+        }
+        _selectedSpotForMoving = null;
+        _spotDragStartPosition = null;
+      });
+      
+      // Save the updated spot to database
+      _saveSpotToDatabase(updatedSpot);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Moved "${updatedSpot.title}" to new position'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      // Reset selection if moved out of bounds
+      setState(() {
+        _selectedSpotForMoving = null;
+        _spotDragStartPosition = null;
+      });
+    }
+  }
+
+  Spot? _findSpotAtPosition(Offset position) {
+    final size = context.size!;
+    final relativeX = position.dx / size.width;
+    final relativeY = position.dy / size.height;
+    
+    // Find spot that contains this position (with some tolerance)
+    for (final spot in _spots.where((s) => s.pageNumber == _currentPage)) {
+      final spotLeft = spot.x - spot.width / 2;
+      final spotRight = spot.x + spot.width / 2;
+      final spotTop = spot.y - spot.height / 2;
+      final spotBottom = spot.y + spot.height / 2;
+      
+      if (relativeX >= spotLeft && relativeX <= spotRight &&
+          relativeY >= spotTop && relativeY <= spotBottom) {
+        return spot;
+      }
+    }
+    return null;
   }
 
   Future<void> _loadSpotsFromDatabase() async {
@@ -384,7 +514,7 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
         canShowScrollStatus: false,
         pageSpacing: 2, // Minimal spacing for smooth page transitions
         enableDocumentLinkAnnotation: false,
-        interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan, // Allow selection in spot mode
+        interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan, // Use selection mode for better tap detection in spot mode
       );
     } else {
       // For demo/asset files
@@ -403,7 +533,7 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
         canShowScrollStatus: false,
         pageSpacing: 2, // Minimal spacing for smooth page transitions
         enableDocumentLinkAnnotation: false,
-        interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan, // Allow selection in spot mode
+        interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan, // Use selection mode for better tap detection in spot mode
       );
     }
   }
@@ -469,24 +599,52 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                   // PDF Viewer with gesture detection
                   GestureDetector(
                     onTapUp: (details) {
+                      print('PDF Viewer: Single tap detected at ${details.localPosition}');
                       if (_isSpotMode) {
                         final size = context.size!;
                         _onSpotTap(details, size);
                       }
                     },
+                    onDoubleTapDown: (details) {
+                      print('PDF Viewer: Double tap detected at ${details.localPosition}');
+                      if (_isSpotMode) {
+                        final size = context.size!;
+                        _onSpotTap(details, size);
+                      } else {
+                        // Enable spot mode and create spot on double tap
+                        setState(() {
+                          _isSpotMode = true;
+                        });
+                        final size = context.size!;
+                        _onSpotTap(details, size);
+                      }
+                    },
+                    onLongPressStart: (details) {
+                      if (_isSpotMode) {
+                        print('PDF Viewer: Long press detected for spot movement');
+                        _onSpotLongPress(details);
+                      }
+                    },
                     onPanStart: (details) {
                       if (_isAnnotationMode) {
                         _onPanStart(details);
+                      } else if (_isSpotMode && _selectedSpotForMoving != null) {
+                        print('PDF Viewer: Starting spot drag');
+                        _onSpotDragStart(details);
                       }
                     },
                     onPanUpdate: (details) {
                       if (_isAnnotationMode) {
                         _onPanUpdate(details);
+                      } else if (_isSpotMode && _selectedSpotForMoving != null) {
+                        _onSpotDragUpdate(details);
                       }
                     },
                     onPanEnd: (details) {
                       if (_isAnnotationMode) {
                         _onPanEnd(details);
+                      } else if (_isSpotMode && _selectedSpotForMoving != null) {
+                        _onSpotDragEnd(details);
                       }
                     },
                     // Force gesture detection in spot mode or annotation mode
