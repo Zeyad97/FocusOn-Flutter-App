@@ -126,7 +126,7 @@ class PieceCard extends StatelessWidget {
               
               const SizedBox(height: 12),
               
-              // Spots indicator
+              // Spots indicator with color breakdown
               Wrap(
                 spacing: 8,
                 runSpacing: 4,
@@ -134,7 +134,7 @@ class PieceCard extends StatelessWidget {
                   _buildSpotIndicator(
                     count: piece.spots.length,
                     color: AppColors.textSecondary,
-                    label: 'spots',
+                    label: 'total',
                   ),
                   if (urgentSpots > 0)
                     _buildSpotIndicator(
@@ -148,6 +148,8 @@ class PieceCard extends StatelessWidget {
                       color: AppColors.errorRed,
                       label: 'critical',
                     ),
+                  // Show color-specific spot counts
+                  ..._buildColorSpecificIndicators(),
                 ],
               ),
               
@@ -305,7 +307,7 @@ class PieceCard extends StatelessWidget {
                               _buildSpotIndicator(
                                 count: piece.spots.length,
                                 color: AppColors.textSecondary,
-                                label: 'spots',
+                                label: 'total',
                               ),
                               if (urgentSpots > 0)
                                 _buildSpotIndicator(
@@ -319,6 +321,8 @@ class PieceCard extends StatelessWidget {
                                   color: AppColors.errorRed,
                                   label: 'critical',
                                 ),
+                              // Show color-specific spot counts
+                              ..._buildColorSpecificIndicators(),
                             ],
                           ),
                         ),
@@ -341,6 +345,60 @@ class PieceCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildColorSpecificIndicators() {
+    print('PieceCard: Building color indicators for piece "${piece.title}"');
+    print('PieceCard: Piece has ${piece.spots.length} spots');
+    for (final spot in piece.spots) {
+      print('  - Spot "${spot.title}" color: ${spot.color.name}');
+    }
+    
+    final indicators = <Widget>[];
+    
+    // Count spots by color
+    final redSpots = piece.spots.where((spot) => spot.color == SpotColor.red).length;
+    final yellowSpots = piece.spots.where((spot) => spot.color == SpotColor.yellow).length;
+    final greenSpots = piece.spots.where((spot) => spot.color == SpotColor.green).length;
+    final blueSpots = piece.spots.where((spot) => spot.color == SpotColor.blue).length;
+    
+    print('PieceCard: Color counts - Red: $redSpots, Yellow: $yellowSpots, Green: $greenSpots, Blue: $blueSpots');
+    
+    // Add indicators for each color that has spots
+    if (redSpots > 0) {
+      indicators.add(_buildSpotIndicator(
+        count: redSpots,
+        color: Colors.red,
+        label: 'red',
+      ));
+    }
+    
+    if (yellowSpots > 0) {
+      indicators.add(_buildSpotIndicator(
+        count: yellowSpots,
+        color: Colors.orange,
+        label: 'yellow',
+      ));
+    }
+    
+    if (greenSpots > 0) {
+      indicators.add(_buildSpotIndicator(
+        count: greenSpots,
+        color: Colors.green,
+        label: 'green',
+      ));
+    }
+    
+    if (blueSpots > 0) {
+      indicators.add(_buildSpotIndicator(
+        count: blueSpots,
+        color: Colors.blue,
+        label: 'blue',
+      ));
+    }
+    
+    print('PieceCard: Created ${indicators.length} indicators');
+    return indicators;
   }
 
   Widget _buildSpotIndicator({

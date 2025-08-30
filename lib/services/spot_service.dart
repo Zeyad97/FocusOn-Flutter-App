@@ -82,11 +82,22 @@ class SpotService {
     print('  - Priority: ${spot.priority.name}');
     print('  - Readiness: ${spot.readinessLevel.name}');
     
-    await db.insert(
-      'spots',
-      _spotToMap(spot),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    // Check if spot exists by checking if it has an ID and exists in database
+    final existingSpot = await getSpot(spot.id);
+    
+    if (existingSpot != null) {
+      // Update existing spot
+      print('SpotService: Spot exists, updating...');
+      await updateSpot(spot);
+    } else {
+      // Insert new spot
+      print('SpotService: New spot, inserting...');
+      await db.insert(
+        'spots',
+        _spotToMap(spot),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
     
     print('SpotService: Spot saved successfully');
   }

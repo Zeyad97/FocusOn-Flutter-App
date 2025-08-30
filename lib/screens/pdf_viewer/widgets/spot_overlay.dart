@@ -4,6 +4,7 @@ import '../../../models/spot.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/srs_service.dart';
 import '../../../services/spot_service.dart';
+import '../../../providers/unified_library_provider.dart';
 import '../../settings/settings_screen.dart';
 
 /// Overlay widget for displaying and managing spots on PDF pages
@@ -36,6 +37,7 @@ class SpotOverlay extends ConsumerWidget {
         children: [
           // Existing spots
           ...spots.map((spot) => _SpotWidget(
+            key: ValueKey('${spot.id}_${spot.updatedAt?.millisecondsSinceEpoch}_${spot.color}_${spot.priority.name}_${spot.readinessLevel.name}'),
             spot: spot,
             pageWidth: pageWidth,
             pageHeight: pageHeight,
@@ -65,6 +67,7 @@ class _SpotWidget extends StatefulWidget {
   final VoidCallback onLongPressed;
 
   const _SpotWidget({
+    super.key,
     required this.spot,
     required this.pageWidth,
     required this.pageHeight,
@@ -467,6 +470,7 @@ class _SpotCreationDialogState extends ConsumerState<SpotCreationDialog> {
             Wrap(
               spacing: 8,
               children: SpotPriority.values.map((priority) {
+                final isSelected = _priority == priority;
                 return ChoiceChip(
                   label: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -474,19 +478,19 @@ class _SpotCreationDialogState extends ConsumerState<SpotCreationDialog> {
                       Icon(
                         _getPriorityIcon(priority),
                         size: 16,
-                        color: _priority == priority ? Theme.of(context).colorScheme.onPrimary : _getPriorityColor(priority),
+                        color: isSelected ? Colors.white : _getPriorityColor(priority),
                       ),
                       const SizedBox(width: 4),
                       Text(_getPriorityLabel(priority)),
                     ],
                   ),
-                  selected: _priority == priority,
+                  selected: isSelected,
                   onSelected: (selected) {
                     if (selected) setState(() => _priority = priority);
                   },
                   selectedColor: _getPriorityColor(priority),
                   labelStyle: TextStyle(
-                    color: _priority == priority ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                    color: isSelected ? Colors.white : Colors.black87,
                   ),
                 );
               }).toList(),
@@ -499,15 +503,16 @@ class _SpotCreationDialogState extends ConsumerState<SpotCreationDialog> {
             Wrap(
               spacing: 8,
               children: ReadinessLevel.values.map((readiness) {
+                final isSelected = _readiness == readiness;
                 return ChoiceChip(
                   label: Text(_getReadinessLabel(readiness)),
-                  selected: _readiness == readiness,
+                  selected: isSelected,
                   onSelected: (selected) {
                     if (selected) setState(() => _readiness = readiness);
                   },
                   selectedColor: _getReadinessColor(readiness),
                   labelStyle: TextStyle(
-                    color: _readiness == readiness ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                    color: isSelected ? Colors.white : Colors.black87,
                   ),
                 );
               }).toList(),
@@ -540,14 +545,14 @@ class _SpotCreationDialogState extends ConsumerState<SpotCreationDialog> {
           onPressed: _createSpot,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primaryPurple,
-            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            foregroundColor: Colors.white,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.add_circle_outline, size: 18),
+              const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
               const SizedBox(width: 4),
-              const Text('Create Spot'),
+              const Text('Create Spot', style: TextStyle(color: Colors.white)),
             ],
           ),
         ),
@@ -759,6 +764,15 @@ class _SpotCreationDialogState extends ConsumerState<SpotCreationDialog> {
   }
 }
 
+/// Public function to open the spot editor from external screens
+Future<bool?> openSpotEditor(BuildContext context, Spot spot) {
+  return Navigator.of(context).push(
+    MaterialPageRoute<bool>(
+      builder: (context) => _FullScreenSpotEditor(spot: spot),
+    ),
+  );
+}
+
 class _FullScreenSpotEditor extends ConsumerStatefulWidget {
   final Spot spot;
 
@@ -891,15 +905,16 @@ class _FullScreenSpotEditorState extends ConsumerState<_FullScreenSpotEditor> {
             Wrap(
               spacing: 8,
               children: SpotPriority.values.map((priority) {
+                final isSelected = _priority == priority;
                 return ChoiceChip(
                   label: Text(_getPriorityLabel(priority)),
-                  selected: _priority == priority,
+                  selected: isSelected,
                   onSelected: (selected) {
                     if (selected) setState(() => _priority = priority);
                   },
                   selectedColor: _getPriorityColor(priority),
                   labelStyle: TextStyle(
-                    color: _priority == priority ? Theme.of(context).colorScheme.onPrimary : null,
+                    color: isSelected ? Colors.white : Colors.black87,
                   ),
                 );
               }).toList(),
@@ -916,15 +931,16 @@ class _FullScreenSpotEditorState extends ConsumerState<_FullScreenSpotEditor> {
             Wrap(
               spacing: 8,
               children: ReadinessLevel.values.map((readiness) {
+                final isSelected = _readinessLevel == readiness;
                 return ChoiceChip(
                   label: Text(_getReadinessLabelForChip(readiness)),
-                  selected: _readinessLevel == readiness,
+                  selected: isSelected,
                   onSelected: (selected) {
                     if (selected) setState(() => _readinessLevel = readiness);
                   },
                   selectedColor: _getReadinessColor(readiness),
                   labelStyle: TextStyle(
-                    color: _readinessLevel == readiness ? Theme.of(context).colorScheme.onPrimary : null,
+                    color: isSelected ? Colors.white : Colors.black87,
                   ),
                 );
               }).toList(),
@@ -953,7 +969,7 @@ class _FullScreenSpotEditorState extends ConsumerState<_FullScreenSpotEditor> {
                 onPressed: _saveSpot,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _getSpotDisplayColor(),
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -961,7 +977,7 @@ class _FullScreenSpotEditorState extends ConsumerState<_FullScreenSpotEditor> {
                 ),
                 child: const Text(
                   'Save Changes',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               ),
             ),
@@ -1047,12 +1063,16 @@ class _FullScreenSpotEditorState extends ConsumerState<_FullScreenSpotEditor> {
         color: _spotColor,
         priority: _priority,
         readinessLevel: _readinessLevel,
+        updatedAt: DateTime.now(), // Update the timestamp
       );
       
       // Save to database
       await ref.read(spotServiceProvider).saveSpot(updatedSpot);
       
-      Navigator.pop(context);
+      // Refresh the unified library
+      await ref.read(unifiedLibraryProvider.notifier).refresh();
+      
+      Navigator.pop(context, true); // Return true to indicate success
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Spot "${_titleController.text}" saved successfully!'),
@@ -1060,6 +1080,7 @@ class _FullScreenSpotEditorState extends ConsumerState<_FullScreenSpotEditor> {
         ),
       );
     } catch (e) {
+      Navigator.pop(context, false); // Return false to indicate failure
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to save spot: $e'),
@@ -1085,18 +1106,30 @@ class _FullScreenSpotEditorState extends ConsumerState<_FullScreenSpotEditor> {
               Navigator.pop(context); // Close dialog
               
               try {
+                print('SpotEditor: About to delete spot "${widget.spot.title}" (id: ${widget.spot.id})');
+                
                 // Delete the spot from the database
                 await ref.read(spotServiceProvider).deleteSpot(widget.spot.id);
                 
-                Navigator.pop(context); // Close editor
+                print('SpotEditor: Spot deleted from database, refreshing unified library...');
+                
+                // Refresh the unified library so the deletion appears everywhere
+                await ref.read(unifiedLibraryProvider.notifier).refresh();
+                
+                print('SpotEditor: Library refreshed, closing editor...');
+                
+                Navigator.pop(context, true); // Close editor with success result
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Spot deleted successfully'),
                     backgroundColor: AppColors.successGreen,
                   ),
                 );
+                
+                print('SpotEditor: Success message shown');
               } catch (e) {
-                Navigator.pop(context); // Close editor
+                print('SpotEditor: Error deleting spot: $e');
+                Navigator.pop(context, false); // Close editor with error result
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Failed to delete spot: $e'),

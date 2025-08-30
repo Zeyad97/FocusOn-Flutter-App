@@ -54,6 +54,7 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   int _totalPages = 1;
   double _zoomLevel = 1.0;
   List<Spot> _spots = [];
+  int _spotRefreshCounter = 0; // Add counter to force SpotOverlay refresh
   
   // Spot movement state
   Spot? _selectedSpotForMoving;
@@ -376,13 +377,29 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     );
   }
 
+  void _showSpotEditor(Spot spot) {
+    openSpotEditor(context, spot).then((result) async {
+      if (result != null) {
+        // Refresh spots after editing with a small delay to ensure database is updated
+        await Future.delayed(const Duration(milliseconds: 100));
+        await _loadSpotsFromDatabase();
+        
+        // Force a rebuild by incrementing refresh counter and calling setState
+        setState(() {
+          _spotRefreshCounter++;
+        });
+      }
+    });
+  }
+
   void _onSpotSelected(Spot spot) {
     // Navigate to spot's page
     if (spot.pageNumber != _currentPage) {
       _pdfController.jumpToPage(spot.pageNumber);
     }
     
-    // TODO: Show spot details or practice session
+    // Show spot editor dialog
+    _showSpotEditor(spot);
   }
 
   Future<void> _saveSpotToDatabase(Spot spot) async {
@@ -394,6 +411,9 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
       // CRITICAL: Refresh unified library so the spot appears in practice dashboard
       await ref.read(unifiedLibraryProvider.notifier).refresh();
       print('PDFScoreViewer: Refreshed unified library after saving spot');
+      
+      // Refresh spots and force SpotOverlay rebuild
+      await _loadSpotsFromDatabase();
     } catch (e) {
       print('PDFScoreViewer: Error saving spot to database: $e');
       if (mounted) {
@@ -405,6 +425,41 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
           ),
         );
       }
+    }
+  }
+
+  // Corner tap navigation for concerts
+  void _handleCornerTap(TapUpDetails details) {
+    // Only handle corner taps when not in spot or annotation mode
+    if (_isSpotMode || _isAnnotationMode) return;
+    
+    final screenSize = MediaQuery.of(context).size;
+    final tapPosition = details.globalPosition;
+    
+    // Define corner areas (20% of screen width from each edge)
+    final cornerWidth = screenSize.width * 0.2;
+    final isLeftCorner = tapPosition.dx < cornerWidth;
+    final isRightCorner = tapPosition.dx > (screenSize.width - cornerWidth);
+    
+    if (isLeftCorner) {
+      // Left corner - previous page
+      _previousPage();
+    } else if (isRightCorner) {
+      // Right corner - next page
+      _nextPage();
+    }
+    // Middle area does nothing (preserves existing behavior)
+  }
+
+  void _previousPage() {
+    if (_currentPage > 1) {
+      _pdfController.jumpToPage(_currentPage - 1);
+    }
+  }
+
+  void _nextPage() {
+    if (_currentPage < _totalPages) {
+      _pdfController.jumpToPage(_currentPage + 1);
     }
   }
 
@@ -524,17 +579,9 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
       final databaseSpots = await spotService.getSpotsForPiece(widget.piece.id);
       
       setState(() {
-        // Merge database spots with any existing spots from the piece
-        final allSpots = <Spot>[...widget.piece.spots];
-        
-        // Add database spots that aren't already in the piece
-        for (final dbSpot in databaseSpots) {
-          if (!allSpots.any((spot) => spot.id == dbSpot.id)) {
-            allSpots.add(dbSpot);
-          }
-        }
-        
-        _spots = allSpots;
+        // Use database spots as the source of truth since they have the latest data
+        _spots = databaseSpots;
+        _spotRefreshCounter++; // Increment counter to force SpotOverlay refresh
       });
       
       print('PDFScoreViewer: Loaded ${databaseSpots.length} spots from database for piece ${widget.piece.id}');
@@ -731,7 +778,11 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                       ) : null,
                       child: Stack(
                         children: [
-                          _buildPDFViewer(),
+                          // PDF Viewer with corner tap navigation
+                          GestureDetector(
+                            onTapUp: (details) => _handleCornerTap(details),
+                            child: _buildPDFViewer(),
+                          ),
                           
                           // Annotation overlay
                           if (_isAnnotationMode)
@@ -798,6 +849,7 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                   if (_spots.isNotEmpty)
                     Positioned.fill(
                       child: SpotOverlay(
+                        key: ValueKey('spots_${_currentPage}_$_spotRefreshCounter'),
                         spots: _spots.where((s) => s.pageNumber == _currentPage).toList(),
                         pageWidth: MediaQuery.of(context).size.width,
                         pageHeight: MediaQuery.of(context).size.height,
