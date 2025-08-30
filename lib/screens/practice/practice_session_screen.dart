@@ -15,65 +15,7 @@ class PracticeSessionScreen extends ConsumerStatefulWidget {
     required this.practiceType,
   });
 
-final Duration _sessionDuration = Duration.zero;
-  Duration _selectedPracticeDuration = const Duration(minutes: 30);
-  bool _microbreakEnabled = false;
-
   @override
-  void initState() {
-    super.initState();
-    _showTimePicker();
-  }
-
-  void _showTimePicker() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Select Practice Duration'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Duration: ${_selectedPracticeDuration.inMinutes} minutes'),
-            Slider(
-              value: _selectedPracticeDuration.inMinutes.toDouble(),
-              min: 15,
-              max: 120,
-              divisions: 7,
-              label: '${_selectedPracticeDuration.inMinutes} mins',
-              onChanged: (value) {
-                setState(() {
-                  _selectedPracticeDuration = Duration(minutes: value.round());
-                });
-              },
-            ),
-            SwitchListTile(
-              title: const Text('Microbreak'),
-              subtitle: const Text('Short breaks during practice'),
-              value: _microbreakEnabled,
-              onChanged: (bool value) {
-                setState(() {
-                  _microbreakEnabled = value;
-                });
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _startPracticeSession();
-            },
-            child: const Text('Start Practice'),
-          ),
-        ],
-      ),
-    );
-  }
   ConsumerState<PracticeSessionScreen> createState() => _PracticeSessionScreenState();
 }
 
@@ -96,7 +38,9 @@ class _PracticeSessionScreenState extends ConsumerState<PracticeSessionScreen> {
     setState(() {
       _isSessionActive = true;
     });
-  }void _endPracticeSession() async {
+  }
+
+  void _endPracticeSession() async {
     await ref.read(practiceSessionProvider.notifier).endSession();
     setState(() {
       _isSessionActive = false;

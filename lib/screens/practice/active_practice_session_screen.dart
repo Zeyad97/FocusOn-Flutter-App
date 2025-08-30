@@ -9,6 +9,7 @@ import '../../models/piece.dart';
 import '../../models/pdf_document.dart';
 import '../../theme/app_theme.dart';
 import '../../screens/pdf_viewer/pdf_score_viewer.dart';
+import '../../services/micro_breaks_service.dart';
 
 class ActivePracticeSessionScreen extends ConsumerStatefulWidget {
   const ActivePracticeSessionScreen({super.key});
@@ -26,11 +27,18 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
   void initState() {
     super.initState();
     _startTimer();
+    
+    // Start micro-breaks timer if enabled
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(practiceTimerProvider.notifier).startPracticeSession();
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    // Stop micro-breaks timer when leaving the screen
+    ref.read(practiceTimerProvider.notifier).stopPracticeSession();
     super.dispose();
   }
 
@@ -52,6 +60,7 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
   Widget build(BuildContext context) {
     final practiceState = ref.watch(activePracticeSessionProvider);
     final practiceNotifier = ref.read(activePracticeSessionProvider.notifier);
+    final microBreaksState = ref.watch(practiceTimerProvider);
 
     if (!practiceState.hasActiveSession) {
       return Scaffold(
@@ -74,13 +83,51 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
         backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
         actions: [
+          // Micro-breaks indicator
+          if (microBreaksState.isRunning)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: microBreaksState.isOnBreak 
+                    ? Colors.orange.withOpacity(0.2)
+                    : Colors.green.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: microBreaksState.isOnBreak ? Colors.orange : Colors.green,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    microBreaksState.isOnBreak ? Icons.pause_circle_filled : Icons.timer,
+                    size: 16,
+                    color: microBreaksState.isOnBreak ? Colors.orange : Colors.green,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    microBreaksState.isOnBreak 
+                        ? 'Break: ${_formatDuration(microBreaksState.timeUntilBreak)}'
+                        : 'Next break: ${_formatDuration(microBreaksState.timeUntilBreak)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: microBreaksState.isOnBreak ? Colors.orange : Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           IconButton(
             icon: Icon(practiceState.isRunning ? Icons.pause : Icons.play_arrow),
             onPressed: () {
               if (practiceState.isRunning) {
                 practiceNotifier.pauseSession();
+                ref.read(practiceTimerProvider.notifier).pausePracticeSession();
               } else {
                 practiceNotifier.resumeSession();
+                ref.read(practiceTimerProvider.notifier).startPracticeSession();
               }
             },
           ),
@@ -580,6 +627,7 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
           TextButton(
             onPressed: () {
               notifier.cancelSession();
+              ref.read(practiceTimerProvider.notifier).stopPracticeSession();
               Navigator.pop(context); // Close dialog
               Navigator.pop(context); // Close practice screen
             },

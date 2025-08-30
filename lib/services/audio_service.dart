@@ -51,6 +51,32 @@ class AudioService {
     }
   }
 
+  /// Play break notification sound
+  Future<void> playBreakNotification() async {
+    try {
+      // Create a new AudioPlayer instance for the notification
+      final notificationPlayer = AudioPlayer();
+      await notificationPlayer.setPlayerMode(PlayerMode.lowLatency);
+      
+      // Play the break notification sound
+      await notificationPlayer.play(AssetSource('sounds/new-notification-07-210334.mp3'));
+      
+      // Clean up the player after playback
+      notificationPlayer.onPlayerComplete.listen((_) {
+        notificationPlayer.dispose();
+      });
+      
+      // Add gentle haptic feedback for break notification
+      HapticFeedback.mediumImpact();
+      
+    } catch (e) {
+      print('Error playing break notification: $e');
+      // Fallback to system sound and haptic feedback
+      SystemSound.play(SystemSoundType.alert);
+      HapticFeedback.mediumImpact();
+    }
+  }
+
   /// Generate a simple beep tone
   Future<void> _playBeep(int frequency, int duration) async {
     try {

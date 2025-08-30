@@ -6,6 +6,7 @@ import 'screens/splash_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/main_navigation.dart';
 import 'screens/settings/settings_screen.dart';
+import 'services/break_notification_service.dart';
 
 void main() {
   runApp(const ProviderScope(child: FocusONScoresApp()));
@@ -18,8 +19,10 @@ class FocusONScoresApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appSettings = ref.watch(appSettingsProvider);
     final isDarkMode = ref.watch(darkModeProvider);
+    final navigatorKey = ref.watch(navigatorKeyProvider);
     
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'FocusON Music',
       theme: _buildLightTheme(appSettings),
       darkTheme: _buildDarkTheme(appSettings),

@@ -15,8 +15,6 @@ enum PracticeSessionType {
   warmup('Warmup'),
   quickReview('Quick Review'),
   performance('Performance Run'),
-  interleavedMixed('Mixed Practice'),
-  interleavedBlocked('Blocked Practice'),
   customSession('Custom Session');
   
   const PracticeSessionType(this.displayName);
@@ -37,10 +35,6 @@ enum PracticeSessionType {
         return Icons.speed;
       case PracticeSessionType.performance:
         return Icons.play_circle;
-      case PracticeSessionType.interleavedMixed:
-        return Icons.shuffle;
-      case PracticeSessionType.interleavedBlocked:
-        return Icons.view_module;
       case PracticeSessionType.customSession:
         return Icons.tune;
     }
@@ -61,10 +55,6 @@ enum PracticeSessionType {
         return 'Fast review of well-learned material';
       case PracticeSessionType.performance:
         return 'Full piece run-through for concerts';
-      case PracticeSessionType.interleavedMixed:
-        return 'Random practice order (optimal for retention)';
-      case PracticeSessionType.interleavedBlocked:
-        return 'Grouped practice blocks (easier but less effective)';
       case PracticeSessionType.customSession:
         return 'Manually selected spots and pieces';
     }
@@ -299,11 +289,6 @@ class PracticeSessionService {
         
       case PracticeSessionType.performance:
         items.addAll(await _generatePerformanceItems(config, pieces));
-        break;
-        
-      case PracticeSessionType.interleavedMixed:
-      case PracticeSessionType.interleavedBlocked:
-        items.addAll(await _generateInterleavedItems(config, pieces));
         break;
         
       case PracticeSessionType.customSession:
@@ -550,18 +535,6 @@ class PracticeSessionService {
     return [];
   }
   
-  /// Generate interleaved practice items
-  Future<List<PracticeItem>> _generateInterleavedItems(
-    PracticeSessionConfig config,
-    List<Piece> pieces,
-  ) async {
-    // Generate regular smart practice items
-    final items = await _generateSmartPracticeItems(config, pieces);
-    
-    // Interleaving is handled in the ordering phase
-    return items;
-  }
-  
   /// Generate custom session items
   Future<List<PracticeItem>> _generateCustomItems(
     PracticeSessionConfig config,
@@ -617,16 +590,6 @@ class PracticeSessionService {
     final optimized = List<PracticeItem>.from(items);
     
     switch (type) {
-      case PracticeSessionType.interleavedMixed:
-        // Random interleaving for optimal retention
-        optimized.shuffle();
-        break;
-        
-      case PracticeSessionType.interleavedBlocked:
-        // Group by piece for blocked practice
-        optimized.sort((a, b) => a.pieceTitle.compareTo(b.pieceTitle));
-        break;
-        
       case PracticeSessionType.criticalSpots:
         // Hardest spots first when energy is highest
         optimized.sort((a, b) => b.urgencyScore.compareTo(a.urgencyScore));

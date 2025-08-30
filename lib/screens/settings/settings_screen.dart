@@ -46,7 +46,7 @@ final microBreaksEnabledProvider = StateNotifierProvider<BoolSettingNotifier, bo
 });
 
 final microBreakIntervalProvider = StateNotifierProvider<DoubleSettingNotifier, double>((ref) {
-  return DoubleSettingNotifier('micro_break_interval', 15.0);
+  return DoubleSettingNotifier('micro_break_interval', 2.0);
 });
 
 final microBreakDurationProvider = StateNotifierProvider<DoubleSettingNotifier, double>((ref) {
@@ -382,7 +382,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           'How often to take breaks (in minutes)',
                           Icons.schedule,
                           ref.watch(appSettingsProvider).microBreakInterval,
-                          15.0,
+                          1.0,
                           60.0,
                           (value) => ref.read(appSettingsProvider.notifier).updateMicroBreakInterval(value),
                           unit: ' min',

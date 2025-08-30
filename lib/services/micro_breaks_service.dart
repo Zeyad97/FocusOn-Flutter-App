@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_settings_provider.dart';
 import '../providers/practice_session_provider.dart';
+import 'break_notification_service.dart';
 
 // Provider for the micro-breaks service
 final microBreaksServiceProvider = Provider<MicroBreaksService>((ref) {
@@ -20,6 +20,7 @@ class PracticeTimerState {
   final bool isOnBreak;
   final bool isRunning;
   final int breakCount;
+  final bool isBreakDialogShown; // New field to track dialog state
 
   const PracticeTimerState({
     this.sessionDuration = Duration.zero,
@@ -27,6 +28,7 @@ class PracticeTimerState {
     this.isOnBreak = false,
     this.isRunning = false,
     this.breakCount = 0,
+    this.isBreakDialogShown = false,
   });
 
   PracticeTimerState copyWith({
@@ -35,6 +37,7 @@ class PracticeTimerState {
     bool? isOnBreak,
     bool? isRunning,
     int? breakCount,
+    bool? isBreakDialogShown,
   }) {
     return PracticeTimerState(
       sessionDuration: sessionDuration ?? this.sessionDuration,
@@ -42,6 +45,7 @@ class PracticeTimerState {
       isOnBreak: isOnBreak ?? this.isOnBreak,
       isRunning: isRunning ?? this.isRunning,
       breakCount: breakCount ?? this.breakCount,
+      isBreakDialogShown: isBreakDialogShown ?? this.isBreakDialogShown,
     );
   }
 }
@@ -51,6 +55,7 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
   Timer? _timer;
   late Duration _breakInterval;
   late Duration _breakDuration;
+  bool _disposed = false;
 
   PracticeTimerNotifier(this.ref) : super(const PracticeTimerState()) {
     _updateSettings();
@@ -74,11 +79,22 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
     // Initialize break count from existing session if available
     startFromExistingSession();
     
-    state = state.copyWith(
-      isRunning: true,
-      timeUntilBreak: _breakInterval,
-      isOnBreak: false,
-    );
+    // Only reset timeUntilBreak if starting fresh (not resuming)
+    if (!state.isRunning || state.timeUntilBreak == Duration.zero) {
+      state = state.copyWith(
+        isRunning: true,
+        timeUntilBreak: _breakInterval,
+        isOnBreak: false,
+        isBreakDialogShown: false,
+      );
+    } else {
+      // Resuming - just restart timer with current state
+      state = state.copyWith(
+        isRunning: true,
+        isOnBreak: false,
+        isBreakDialogShown: false,
+      );
+    }
 
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), _onTimerTick);
@@ -88,6 +104,10 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
     state = state.copyWith(isRunning: true);
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_disposed) {
+        timer.cancel();
+        return;
+      }
       state = state.copyWith(
         sessionDuration: Duration(seconds: state.sessionDuration.inSeconds + 1),
       );
@@ -95,6 +115,12 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
   }
 
   void _onTimerTick(Timer timer) {
+    // Check if the notifier is still active before updating state
+    if (_disposed) {
+      _timer?.cancel();
+      return;
+    }
+    
     if (state.isOnBreak) {
       // During break, countdown break duration
       final remainingBreak = Duration(
@@ -105,7 +131,9 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
         // Break is over, resume practice
         _resumeFromBreak();
       } else {
-        state = state.copyWith(timeUntilBreak: remainingBreak);
+        if (!_disposed) {
+          state = state.copyWith(timeUntilBreak: remainingBreak);
+        }
       }
     } else {
       // During practice, countdown to next break and track total time
@@ -117,8 +145,8 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
       );
 
       if (newTimeUntilBreak <= Duration.zero) {
-        // Time for a break!
-        _startBreak();
+        // Time for a break! Show dialog but don't start break timer yet
+        _showBreakDialog();
       } else {
         state = state.copyWith(
           sessionDuration: newSessionDuration,
@@ -128,32 +156,87 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
     }
   }
 
-  void _startBreak() {
+  void _showBreakDialog() {
+    if (_disposed) return;
+    
     final newBreakCount = state.breakCount + 1;
     
+    // Pause the timer but don't start break countdown yet
     state = state.copyWith(
-      isOnBreak: true,
-      timeUntilBreak: _breakDuration,
+      isRunning: false,
       breakCount: newBreakCount,
+      isBreakDialogShown: true,
     );
+    
+    // Cancel the timer until user makes a choice
+    _timer?.cancel();
     
     // Update the active practice session with the new break count
     _updatePracticeSessionBreakCount(newBreakCount);
     
     // Show break notification
-    ref.read(microBreaksServiceProvider).showBreakNotification(
+    ref.read(breakNotificationServiceProvider).showBreakDialog(
       _breakDuration,
       newBreakCount,
     );
   }
 
+  void _startBreak() {
+    if (_disposed) return;
+    
+    state = state.copyWith(
+      isOnBreak: true,
+      timeUntilBreak: _breakDuration,
+      isRunning: true,
+      isBreakDialogShown: false,
+    );
+
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), _onTimerTick);
+  }
+
   void _resumeFromBreak() {
+    if (_disposed) return;
+    
     state = state.copyWith(
       isOnBreak: false,
       timeUntilBreak: _breakInterval,
+      isRunning: false, // Pause until user decides
+      isBreakDialogShown: true, // Show resume dialog
     );
     
-    ref.read(microBreaksServiceProvider).showResumeNotification();
+    // Cancel timer until user makes choice
+    _timer?.cancel();
+    
+    ref.read(breakNotificationServiceProvider).showResumeDialog();
+  }
+
+  void resumePractice() {
+    if (!_disposed) {
+      state = state.copyWith(
+        isOnBreak: false,
+        isRunning: true,
+        isBreakDialogShown: false,
+      );
+      
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), _onTimerTick);
+    }
+  }
+
+  void extendBreakFromResume(Duration extension) {
+    if (!_disposed) {
+      // Go back to break mode with extended time
+      state = state.copyWith(
+        isOnBreak: true,
+        timeUntilBreak: extension,
+        isRunning: true,
+        isBreakDialogShown: false,
+      );
+      
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), _onTimerTick);
+    }
   }
 
   void pausePracticeSession() {
@@ -167,13 +250,31 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
   }
 
   void skipBreak() {
-    if (state.isOnBreak) {
+    if (state.isBreakDialogShown && !_disposed) {
+      // Skip break - reset interval and resume practice
+      state = state.copyWith(
+        isOnBreak: false,
+        isRunning: true,
+        timeUntilBreak: _breakInterval,
+        isBreakDialogShown: false,
+      );
+      
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), _onTimerTick);
+    } else if (state.isOnBreak && !_disposed) {
+      // Skip during active break
       _resumeFromBreak();
     }
   }
 
+  void startBreak() {
+    if (state.isBreakDialogShown && !_disposed) {
+      _startBreak();
+    }
+  }
+
   void extendBreak(Duration extension) {
-    if (state.isOnBreak) {
+    if (state.isOnBreak && !_disposed) {
       state = state.copyWith(
         timeUntilBreak: Duration(
           seconds: state.timeUntilBreak.inSeconds + extension.inSeconds,
@@ -211,6 +312,7 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
 
   @override
   void dispose() {
+    _disposed = true;
     _timer?.cancel();
     super.dispose();
   }
@@ -222,12 +324,13 @@ class MicroBreaksService {
   MicroBreaksService(this.ref);
 
   void showBreakNotification(Duration breakDuration, int breakNumber) {
-    // This would show a dialog or notification
-    // For now, we'll just print (in a real app, use a notification system)
-    print('🛑 Time for break #$breakNumber! Duration: ${breakDuration.inMinutes} minutes');
+    // Deprecated: Use breakNotificationServiceProvider.showBreakDialog instead
+    print('🛑 BREAK TIME #$breakNumber! Duration: ${breakDuration.inMinutes} minutes');
+    print('   Recommendation: ${getBreakRecommendation(Duration(minutes: 15), breakNumber)}');
   }
 
   void showResumeNotification() {
+    // Deprecated: Use breakNotificationServiceProvider.showResumeDialog instead
     print('✅ Break over! Ready to resume practice?');
   }
 

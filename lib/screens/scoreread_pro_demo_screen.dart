@@ -336,7 +336,7 @@ class _ScoreReadProDemoScreenState extends ConsumerState<ScoreReadProDemoScreen>
           const SizedBox(height: 16),
           _buildFeatureCard(
             'Smart Practice Sessions',
-            'Intelligent practice planning with interleaved and blocked practice modes',
+            'Intelligent practice planning with adaptive scheduling and targeted spot practice',
             Icons.auto_awesome,
             AppColors.warningOrange,
           ),
