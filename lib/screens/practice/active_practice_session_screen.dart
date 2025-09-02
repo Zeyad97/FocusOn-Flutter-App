@@ -36,7 +36,7 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _stopTimer();
     // Stop micro-breaks timer when leaving the screen
     ref.read(practiceTimerProvider.notifier).stopPracticeSession();
     super.dispose();
@@ -46,13 +46,32 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         final state = ref.read(activePracticeSessionProvider);
-        if (state.isRunning) {
+        if (state.isRunning && state.hasActiveSession) {
           setState(() {
             _sessionElapsed = _sessionElapsed + const Duration(seconds: 1);
             _spotElapsed = _spotElapsed + const Duration(seconds: 1);
           });
+        } else if (!state.hasActiveSession) {
+          // Stop timer if session is no longer active
+          _stopTimer();
         }
+      } else {
+        // Stop timer if widget is not mounted
+        _stopTimer();
       }
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void _resetTimerState() {
+    _stopTimer();
+    setState(() {
+      _sessionElapsed = Duration.zero;
+      _spotElapsed = Duration.zero;
     });
   }
 
@@ -76,13 +95,39 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
     final session = practiceState.session!;
     final currentSpot = practiceState.currentSpot;
 
-    return Scaffold(
-      extendBodyBehindAppBar: false,
-      appBar: AppBar(
-        title: Text(session.name),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        elevation: 0,
-        actions: [
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        
+        // Show confirmation dialog before exiting
+        final shouldExit = await _showExitConfirmationDialog();
+        if (shouldExit && context.mounted) {
+          _resetTimerState();
+          ref.read(practiceTimerProvider.notifier).stopPracticeSession();
+          ref.read(activePracticeSessionProvider.notifier).clearSession();
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        extendBodyBehindAppBar: false,
+        appBar: AppBar(
+          title: Text(session.name),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () async {
+              final shouldExit = await _showExitConfirmationDialog();
+              if (shouldExit && context.mounted) {
+                _resetTimerState();
+                ref.read(practiceTimerProvider.notifier).stopPracticeSession();
+                ref.read(activePracticeSessionProvider.notifier).clearSession();
+                Navigator.of(context).pop();
+              }
+            },
+          ),
+          actions: [
           // Micro-breaks indicator
           if (microBreaksState.isRunning)
             Container(
@@ -144,8 +189,9 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
           ? _buildSessionComplete(session)
           : _buildPracticeInterface(session, currentSpot, practiceNotifier),
       ),
-    );
-  }
+    ), // End Scaffold
+  ); // End PopScope
+  } // End build method
 
   Widget _buildPracticeInterface(PracticeSession session, SpotSession currentSpot, ActivePracticeSessionNotifier notifier) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -473,6 +519,27 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
         ),
       ),
     );
+  }
+
+  Future<bool> _showExitConfirmationDialog() async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Exit Practice Session?'),
+        content: const Text('Are you sure you want to exit this practice session? Your session timer will be stopped and reset.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Continue'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Exit Session'),
+          ),
+        ],
+      ),
+    ) ?? false;
   }
 
   Widget _buildSpotInfo(SpotSession spotSession) {

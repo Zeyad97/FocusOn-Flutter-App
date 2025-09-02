@@ -24,17 +24,38 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
 
   @override
   void dispose() {
-    _sessionTimer?.cancel();
+    _stopTimer();
     super.dispose();
   }
 
   void _startTimer() {
     _sessionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
-        setState(() {
-          _elapsedSeconds++;
-        });
+        final state = ref.read(activePracticeSessionProvider);
+        if (state.hasActiveSession && state.isRunning) {
+          setState(() {
+            _elapsedSeconds++;
+          });
+        } else if (!state.hasActiveSession) {
+          // Stop timer if session is no longer active
+          _stopTimer();
+        }
+      } else {
+        // Stop timer if widget is not mounted
+        _stopTimer();
       }
+    });
+  }
+
+  void _stopTimer() {
+    _sessionTimer?.cancel();
+    _sessionTimer = null;
+  }
+
+  void _resetTimerState() {
+    _stopTimer();
+    setState(() {
+      _elapsedSeconds = 0;
     });
   }
 
@@ -44,39 +65,74 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
     final practiceNotifier = ref.read(activePracticeSessionProvider.notifier);
 
     if (!practiceState.hasActiveSession) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Practice Session')),
-        body: const Center(child: Text('No active practice session')),
+      return PopScope(
+        canPop: false,
+        onPopInvoked: (didPop) async {
+          if (didPop) return;
+          final shouldExit = await _showExitConfirmationDialog();
+          if (shouldExit && context.mounted) {
+            _resetTimerState();
+            ref.read(activePracticeSessionProvider.notifier).clearSession();
+            Navigator.of(context).pop();
+          }
+        },
+        child: Scaffold(
+          appBar: AppBar(title: const Text('Practice Session')),
+          body: const Center(child: Text('No active practice session')),
+        ),
       );
     }
 
     final session = practiceState.session!;
     final currentRealSpot = practiceState.currentRealSpot;
     
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(session.name),
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        actions: [
-          IconButton(
-            icon: Icon(practiceState.isRunning ? Icons.pause : Icons.play_arrow),
-            onPressed: () {
-              if (practiceState.isRunning) {
-                practiceNotifier.pauseSession();
-              } else {
-                practiceNotifier.resumeSession();
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        final shouldExit = await _showExitConfirmationDialog();
+        if (shouldExit && context.mounted) {
+          _resetTimerState();
+          ref.read(activePracticeSessionProvider.notifier).clearSession();
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(session.name),
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () async {
+              final shouldExit = await _showExitConfirmationDialog();
+              if (shouldExit && context.mounted) {
+                _resetTimerState();
+                ref.read(activePracticeSessionProvider.notifier).clearSession();
+                Navigator.of(context).pop();
               }
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.stop),
-            onPressed: () => _showCancelDialog(practiceNotifier),
-          ),
-        ],
+          actions: [
+            IconButton(
+              icon: Icon(practiceState.isRunning ? Icons.pause : Icons.play_arrow),
+              onPressed: () {
+                if (practiceState.isRunning) {
+                  practiceNotifier.pauseSession();
+                } else {
+                  practiceNotifier.resumeSession();
+                }
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.stop),
+              onPressed: () => _showCancelDialog(practiceNotifier),
+            ),
+          ],
+        ),
+        body: currentRealSpot != null 
+            ? _buildPracticeInterface(session, practiceState, practiceNotifier, currentRealSpot)
+            : _buildSessionComplete(),
       ),
-      body: currentRealSpot != null 
-          ? _buildPracticeInterface(session, practiceState, practiceNotifier, currentRealSpot)
-          : _buildSessionComplete(),
     );
   }
 
@@ -378,6 +434,27 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
 
   void _completeSpot(ActivePracticeSessionNotifier notifier, SpotResult result) {
     notifier.completeCurrentSpot(result);
+  }
+
+  Future<bool> _showExitConfirmationDialog() async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Exit Practice Session?'),
+        content: const Text('Are you sure you want to exit this practice session? Your session timer will be stopped and reset.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Continue'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Exit Session'),
+          ),
+        ],
+      ),
+    ) ?? false;
   }
 
   void _showCancelDialog(ActivePracticeSessionNotifier notifier) {
