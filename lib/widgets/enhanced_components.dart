@@ -356,7 +356,7 @@ class _EnhancedSearchBarState extends State<EnhancedSearchBar>
               border: Border.all(
                 color: _isFocused 
                     ? AppColors.primaryPurple.withOpacity(0.5)
-                    : Colors.grey.shade300,
+                    : Theme.of(context).colorScheme.outline.withOpacity(0.3),
                 width: _isFocused ? 2 : 1,
               ),
               boxShadow: [
@@ -371,11 +371,11 @@ class _EnhancedSearchBarState extends State<EnhancedSearchBar>
             ),
             child: Row(
               children: [
-                const Padding(
-                  padding: EdgeInsets.only(left: 16),
+                Padding(
+                  padding: const EdgeInsets.only(left: 16),
                   child: Icon(
                     Icons.search,
-                    color: AppColors.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                     size: 20,
                   ),
                 ),
@@ -388,7 +388,7 @@ class _EnhancedSearchBarState extends State<EnhancedSearchBar>
                     decoration: InputDecoration(
                       hintText: widget.hintText ?? 'Search music...',
                       hintStyle: TextStyle(
-                        color: Colors.grey.shade500,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                         fontSize: 16,
                       ),
                       border: InputBorder.none,
@@ -397,18 +397,18 @@ class _EnhancedSearchBarState extends State<EnhancedSearchBar>
                         vertical: 16,
                       ),
                     ),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
-                      color: AppColors.textPrimary,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                 ),
                 if (widget.controller?.text.isNotEmpty == true)
                   IconButton(
                     onPressed: widget.onClear,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.clear,
-                      color: AppColors.textSecondary,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                       size: 20,
                     ),
                   ),

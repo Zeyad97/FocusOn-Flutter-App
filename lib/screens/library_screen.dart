@@ -26,6 +26,8 @@ class MusicPiece {
   final String? duration; // New field for duration
   final String? key; // New field for musical key
   final int spotsCount; // New field for spots count
+  final List<Color> spotColors; // New field for actual spot colors
+  final Map<Color, int> spotColorCounts; // New field for spot color counts
 
   MusicPiece({
     required this.id,
@@ -41,6 +43,8 @@ class MusicPiece {
     this.duration,
     this.key,
     this.spotsCount = 0,
+    this.spotColors = const [],
+    this.spotColorCounts = const {},
   });
 }
 
@@ -93,6 +97,8 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
           duration: piece.duration,
           key: piece.key,
           spotsCount: piece.spotsCount,
+          spotColors: piece.spotColors,
+          spotColorCounts: piece.spotColorCounts,
         );
       }
       return piece;
@@ -113,6 +119,11 @@ class LibraryNotifier extends StateNotifier<List<MusicPiece>> {
           difficulty: piece.difficulty,
           categoryColor: piece.categoryColor,
           isFavorite: piece.isFavorite,
+          duration: piece.duration,
+          key: piece.key,
+          spotsCount: piece.spotsCount,
+          spotColors: piece.spotColors,
+          spotColorCounts: piece.spotColorCounts,
         );
       }
       return piece;
@@ -192,21 +203,32 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       ),
       data: (pieces) {
         // Convert pieces to MusicPiece for UI compatibility
-        final musicPieces = pieces.map((piece) => MusicPiece(
-          id: piece.id,
-          title: piece.title,
-          composer: piece.composer,
-          category: 'Music',
-          dateAdded: piece.createdAt,
-          pages: piece.totalPages,
-          practiceProgress: 0.0, // TODO: Calculate from spots
-          difficulty: piece.difficulty.toString(),
-          categoryColor: _getCategoryColor('Music'),
-          isFavorite: false, // TODO: Implement favorites
-          duration: piece.metadata?['duration'],
-          key: piece.keySignature,
-          spotsCount: piece.spots.length,
-        )).toList();
+        final musicPieces = pieces.map((piece) {
+          // Calculate spot color counts
+          final Map<Color, int> colorCounts = {};
+          for (final spot in piece.spots) {
+            final color = spot.color.visualColor;
+            colorCounts[color] = (colorCounts[color] ?? 0) + 1;
+          }
+          
+          return MusicPiece(
+            id: piece.id,
+            title: piece.title,
+            composer: piece.composer,
+            category: 'Music',
+            dateAdded: piece.createdAt,
+            pages: piece.totalPages,
+            practiceProgress: piece.readinessPercentage / 100.0, // Calculate from spots (0.0-1.0)
+            difficulty: piece.difficulty.toString(),
+            categoryColor: _getCategoryColor('Music'),
+            isFavorite: false, // TODO: Implement favorites
+            duration: piece.metadata?['duration'],
+            key: piece.keySignature,
+            spotsCount: piece.spots.length,
+            spotColors: piece.spots.map((spot) => spot.color.visualColor).toSet().toList(),
+            spotColorCounts: colorCounts,
+          );
+        }).toList();
         
         final filteredPieces = _getFilteredPieces(musicPieces);
 
@@ -842,25 +864,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                           const Spacer(),
                           if (piece.spotsCount > 0) ...[
                             Container(
-                              constraints: const BoxConstraints(maxWidth: 50),
-                              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
+                              margin: const EdgeInsets.only(bottom: 2),
+                              constraints: const BoxConstraints(maxWidth: 120),
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                               decoration: BoxDecoration(
-                                color: piece.spotsCount > 10 ? AppColors.errorRed.withOpacity(0.1) :
-                                       piece.spotsCount > 5 ? AppColors.warningOrange.withOpacity(0.1) :
-                                       AppColors.successGreen.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(4),
+                                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(6),
                               ),
-                              child: Text(
-                                '${piece.spotsCount} ${piece.spotsCount == 1 ? "spot" : "spots"}',
-                                style: TextStyle(
-                                  fontSize: 7,
-                                  fontWeight: FontWeight.w500,
-                                  color: piece.spotsCount > 10 ? AppColors.errorRed :
-                                         piece.spotsCount > 5 ? AppColors.warningOrange :
-                                         AppColors.successGreen,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                              child: _buildSpotColorDisplay(piece.spotColorCounts),
                             ),
                           ],
                         ],
@@ -1410,11 +1421,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.7,
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
         ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1430,36 +1441,43 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
               ),
             ),
             // Title
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Text(
                 'Sort Library',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            // Scrollable content
-            Flexible(
+            // Scrollable content with better constraints
+            Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Sort By',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 12),
                     ...['Recently Added', 'Title', 'Composer', 'Progress']
                         .map((sortOption) => ListTile(
-                              title: Text(sortOption),
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                sortOption,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
+                              ),
                               trailing: _sortBy == sortOption 
                                   ? const Icon(Icons.check, color: AppColors.primaryPurple) 
                                   : null,
@@ -1470,7 +1488,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                                 Navigator.pop(context);
                               },
                             )),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32), // Extra padding at bottom
                   ],
                 ),
               ),
@@ -1488,11 +1506,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.6,
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
         ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1508,19 +1526,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
               ),
             ),
             // Title
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Text(
                 'Sort Library',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            // Scrollable content
-            Flexible(
+            // Scrollable content with better constraints
+            Expanded(
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1530,7 +1549,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                               _getSortIcon(sortOption),
                               color: AppColors.primaryPurple,
                             ),
-                            title: Text(sortOption),
+                            title: Text(
+                              sortOption,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
                             trailing: _sortBy == sortOption
                                 ? const Icon(
                                     Icons.check,
@@ -1548,7 +1572,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 32), // Extra padding at bottom
           ],
         ),
       ),
@@ -1861,6 +1885,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                     onPressed: () {
                       Navigator.of(context).pop();
                       // Convert Piece to MusicPiece for _openPiece
+                      final Map<Color, int> colorCounts = {};
+                      for (final spot in updatedPiece.spots) {
+                        final color = spot.color.visualColor;
+                        colorCounts[color] = (colorCounts[color] ?? 0) + 1;
+                      }
+                      
                       final musicPiece = MusicPiece(
                         id: updatedPiece.id,
                         title: updatedPiece.title,
@@ -1868,13 +1898,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                         category: 'Music',
                         dateAdded: updatedPiece.createdAt,
                         pages: updatedPiece.totalPages,
-                        practiceProgress: 0.0,
+                        practiceProgress: updatedPiece.readinessPercentage / 100.0,
                         difficulty: updatedPiece.difficulty.toString(),
                         categoryColor: _getCategoryColor('Music'),
                         isFavorite: false,
                         duration: updatedPiece.metadata?['duration'],
                         key: updatedPiece.keySignature,
                         spotsCount: updatedPiece.spots.length,
+                        spotColors: updatedPiece.spots.map((spot) => spot.color.visualColor).toSet().toList(),
+                        spotColorCounts: colorCounts,
                       );
                       _openPiece(musicPiece);
                     },
@@ -1894,6 +1926,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
             'Successfully imported "${updatedPiece.title}"',
             action: () {
               // Convert Piece to MusicPiece for _openPiece
+              final Map<Color, int> colorCounts = {};
+              for (final spot in updatedPiece.spots) {
+                final color = spot.color.visualColor;
+                colorCounts[color] = (colorCounts[color] ?? 0) + 1;
+              }
+              
               final musicPiece = MusicPiece(
                 id: updatedPiece.id,
                 title: updatedPiece.title,
@@ -1901,13 +1939,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
                 category: 'Music',
                 dateAdded: updatedPiece.createdAt,
                 pages: updatedPiece.totalPages,
-                practiceProgress: 0.0,
+                practiceProgress: updatedPiece.readinessPercentage / 100.0,
                 difficulty: updatedPiece.difficulty.toString(),
                 categoryColor: _getCategoryColor('Music'),
                 isFavorite: false,
                 duration: updatedPiece.metadata?['duration'],
                 key: updatedPiece.keySignature,
                 spotsCount: updatedPiece.spots.length,
+                spotColors: updatedPiece.spots.map((spot) => spot.color.visualColor).toSet().toList(),
+                spotColorCounts: colorCounts,
               );
               _openPiece(musicPiece);
             },
@@ -1953,6 +1993,65 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen>
       default:
         return AppColors.textSecondary;
     }
+  }
+
+  String _buildSpotColorText(Map<Color, int> colorCounts) {
+    if (colorCounts.isEmpty) return '';
+    
+    final List<String> colorTexts = [];
+    
+    colorCounts.forEach((color, count) {
+      String colorName = _getColorName(color);
+      colorTexts.add('$count $colorName');
+    });
+    
+    return colorTexts.join(', ');
+  }
+
+  Widget _buildSpotColorDisplay(Map<Color, int> colorCounts) {
+    if (colorCounts.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
+    final List<Widget> colorWidgets = [];
+    
+    colorCounts.forEach((color, count) {
+      colorWidgets.add(
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              '$count',
+              style: const TextStyle(
+                fontSize: 8,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+    
+    return Wrap(
+      spacing: 3,
+      runSpacing: 2,
+      children: colorWidgets,
+    );
+  }
+  
+  String _getColorName(Color color) {
+    if (color == Colors.red) return 'red';
+    if (color == Colors.orange) return 'orange';
+    if (color == Colors.green) return 'green';
+    if (color == Colors.blue) return 'blue';
+    if (color == Colors.yellow) return 'yellow';
+    return 'spot';
   }
 
   void _importFromCloud() async {

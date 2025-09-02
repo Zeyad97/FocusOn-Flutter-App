@@ -442,7 +442,8 @@ class _SpotCreationDialogState extends ConsumerState<SpotCreationDialog> {
               children: [
                 _buildQuickSetupChip('Difficult Section', SpotPriority.high, ReadinessLevel.newSpot, Colors.red),
                 _buildQuickSetupChip('Practice More', SpotPriority.medium, ReadinessLevel.learning, Colors.orange),
-                _buildQuickSetupChip('Review', SpotPriority.low, ReadinessLevel.review, Colors.blue),
+                _buildQuickSetupChip('Review', SpotPriority.low, ReadinessLevel.review, Colors.green),
+                _buildQuickSetupChip('Nearly Mastered', SpotPriority.low, ReadinessLevel.mastered, Colors.blue),
               ],
             ),
             
@@ -664,11 +665,11 @@ class _SpotCreationDialogState extends ConsumerState<SpotCreationDialog> {
       case ReadinessLevel.newSpot:
         return SpotColor.red; // New spots are critical (red)
       case ReadinessLevel.learning:
-        return SpotColor.yellow; // Learning spots need practice (yellow)
+        return SpotColor.yellow; // Learning spots need practice (yellow/orange)
       case ReadinessLevel.review:
-        return SpotColor.yellow; // Review spots need practice (yellow)
+        return SpotColor.green; // Review spots are stable (green)
       case ReadinessLevel.mastered:
-        return SpotColor.green; // Mastered spots are easy (green)
+        return SpotColor.blue; // Mastered spots are nearly solved (blue)
     }
   }
 
