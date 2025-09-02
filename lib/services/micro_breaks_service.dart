@@ -148,10 +148,12 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
         // Time for a break! Show dialog but don't start break timer yet
         _showBreakDialog();
       } else {
-        state = state.copyWith(
-          sessionDuration: newSessionDuration,
-          timeUntilBreak: newTimeUntilBreak,
-        );
+        if (!_disposed) {
+          state = state.copyWith(
+            sessionDuration: newSessionDuration,
+            timeUntilBreak: newTimeUntilBreak,
+          );
+        }
       }
     }
   }
@@ -162,11 +164,13 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
     final newBreakCount = state.breakCount + 1;
     
     // Pause the timer but don't start break countdown yet
-    state = state.copyWith(
-      isRunning: false,
-      breakCount: newBreakCount,
-      isBreakDialogShown: true,
-    );
+    if (!_disposed) {
+      state = state.copyWith(
+        isRunning: false,
+        breakCount: newBreakCount,
+        isBreakDialogShown: true,
+      );
+    }
     
     // Cancel the timer until user makes a choice
     _timer?.cancel();
@@ -289,7 +293,6 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
     if (activePracticeSession.hasActiveSession && activePracticeSession.session != null) {
       // Update the session with the new break count
       final updatedSession = activePracticeSession.session!.copyWith(
-        breaksTaken: newBreakCount,
         updatedAt: DateTime.now(),
       );
       
@@ -304,7 +307,7 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
     // initialize break count from the session data
     final activePracticeSession = ref.read(activePracticeSessionProvider);
     if (activePracticeSession.hasActiveSession && activePracticeSession.session != null) {
-      final existingBreakCount = activePracticeSession.session!.breaksTaken;
+      final existingBreakCount = 0; // breaksTaken field removed
       state = state.copyWith(breakCount: existingBreakCount);
       print('[MicroBreaks] Restored break count from session: $existingBreakCount');
     }

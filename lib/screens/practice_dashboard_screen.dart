@@ -47,6 +47,22 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
     });
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Refresh practice data when app comes back to foreground
+    if (state == AppLifecycleState.resumed) {
+      print('[PracticeDashboard] App resumed, refreshing practice data');
+      ref.read(practiceProvider.notifier).refresh();
+    }
+  }
+
   // Helper method to get theme-aware text colors
   Color _getSecondaryTextColor() {
     return Theme.of(context).brightness == Brightness.dark 
@@ -152,24 +168,6 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
   }
 
   @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Refresh when app resumes (user returns from PDF viewer)
-    if (state == AppLifecycleState.resumed) {
-      Future.delayed(Duration(milliseconds: 500), () {
-        if (mounted) {
-          ref.read(practiceProvider.notifier).refresh();
-        }
-      });
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final practiceState = ref.watch(practiceProvider);
     
@@ -255,6 +253,7 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
                             onPressed: () => ref.read(practiceProvider.notifier).refresh(),
                           ),
                         ),
+
                         Container(
                           margin: const EdgeInsets.only(right: 16),
                           child: IconButton(
@@ -627,34 +626,10 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
 
   Future<void> _openSpotInPdf(Spot spot) async {
     try {
-      // Get the actual piece from the unified library
-      final asyncPieces = ref.read(unifiedLibraryProvider);
-      
-      // Handle AsyncValue states
-      final pieces = asyncPieces.when(
-        data: (data) => data,
-        loading: () => <Piece>[],
-        error: (error, stack) => <Piece>[],
-      );
-      
-      final piece = pieces.where((p) => p.id == spot.pieceId).firstOrNull;
-      
-      if (piece == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Could not find piece for this spot'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-        return;
-      }
-      
-      // Start a practice session for this piece instead of opening PDF directly
+      // Start a practice session for just this single spot
       try {
         await ref.read(activePracticeSessionProvider.notifier)
-            .startPieceSession(piece, SessionType.smart);
+            .startSingleSpotSession(spot);
         
         // Navigate to active practice session screen
         if (mounted) {
@@ -669,7 +644,7 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error starting practice session: $e'),
+              content: Text('Error starting single spot practice: $e'),
               backgroundColor: AppColors.errorRed,
               behavior: SnackBarBehavior.floating,
             ),
@@ -1486,7 +1461,7 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
 
   int _calculateGoalProgress(PracticeState practiceState, [int? overrideTodayTime]) {
     final todayTime = overrideTodayTime ?? practiceState.stats?.todayPracticeTime ?? 0;
-    final dailyGoal = 30; // Default 30 minutes goal, could be from user settings
+    final dailyGoal = practiceState.dailyGoal?.inMinutes ?? 30; // Use project's daily goal or default 30 minutes
     return ((todayTime / dailyGoal) * 100).clamp(0, 100).round();
   }
 

@@ -33,11 +33,13 @@ enum ViewMode {
 class PDFScoreViewer extends ConsumerStatefulWidget {
   final Piece piece;
   final String? pdfPath;
+  final int? initialPage;
 
   const PDFScoreViewer({
     super.key,
     required this.piece,
     this.pdfPath,
+    this.initialPage,
   });
 
   @override
@@ -77,10 +79,11 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     _loadSpotsFromDatabase();
     _loadAnnotationsFromDatabase();
     
-    // Navigate to last viewed page if available
-    if (widget.piece.lastViewedPage != null) {
+    // Navigate to initial page or last viewed page if available
+    final targetPage = widget.initialPage ?? widget.piece.lastViewedPage;
+    if (targetPage != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _pdfController.jumpToPage(widget.piece.lastViewedPage!);
+        _pdfController.jumpToPage(targetPage);
       });
     }
   }

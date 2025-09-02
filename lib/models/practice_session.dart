@@ -9,6 +9,7 @@ enum SessionStatus {
   cancelled,  // Stopped before completion
 }
 
+/// Extension for SessionStatus enum
 extension SessionStatusExtension on SessionStatus {
   String get displayName {
     switch (this) {
@@ -142,7 +143,6 @@ class PracticeSession {
   final bool microBreaksEnabled;
   final Duration microBreakInterval;
   final Duration microBreakDuration;
-  final int breaksTaken;
   final String? projectId;
   final Map<String, dynamic>? metadata;
   final DateTime createdAt;
@@ -160,7 +160,6 @@ class PracticeSession {
     this.microBreaksEnabled = true,
     this.microBreakInterval = const Duration(minutes: 30),
     this.microBreakDuration = const Duration(minutes: 5),
-    this.breaksTaken = 0,
     this.projectId,
     this.metadata,
     required this.createdAt,
@@ -240,7 +239,6 @@ class PracticeSession {
     bool? microBreaksEnabled,
     Duration? microBreakInterval,
     Duration? microBreakDuration,
-    int? breaksTaken,
     String? projectId,
     Map<String, dynamic>? metadata,
     DateTime? updatedAt,
@@ -257,7 +255,6 @@ class PracticeSession {
       microBreaksEnabled: microBreaksEnabled ?? this.microBreaksEnabled,
       microBreakInterval: microBreakInterval ?? this.microBreakInterval,
       microBreakDuration: microBreakDuration ?? this.microBreakDuration,
-      breaksTaken: breaksTaken ?? this.breaksTaken,
       projectId: projectId ?? this.projectId,
       metadata: metadata ?? this.metadata,
       createdAt: createdAt,
@@ -278,7 +275,6 @@ class PracticeSession {
       'micro_breaks_enabled': microBreaksEnabled ? 1 : 0,
       'micro_break_interval': microBreakInterval.inMilliseconds,
       'micro_break_duration': microBreakDuration.inMilliseconds,
-      'breaks_taken': breaksTaken,
       'project_id': projectId,
       'metadata': metadata,
       'created_at': createdAt.millisecondsSinceEpoch,
@@ -304,7 +300,6 @@ class PracticeSession {
       microBreaksEnabled: json['micro_breaks_enabled'] == 1,
       microBreakInterval: Duration(milliseconds: json['micro_break_interval']),
       microBreakDuration: Duration(milliseconds: json['micro_break_duration']),
-      breaksTaken: json['breaks_taken'] ?? 0,
       projectId: json['project_id'],
       metadata: json['metadata']?.cast<String, dynamic>(),
       createdAt: DateTime.fromMillisecondsSinceEpoch(json['created_at']),

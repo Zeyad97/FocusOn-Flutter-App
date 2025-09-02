@@ -15,13 +15,13 @@ final todayBreakStatsProvider = FutureProvider<int>((ref) async {
   // Sum up breaks taken from all today's sessions
   int totalBreaks = 0;
   for (final session in sessions) {
-    totalBreaks += session.breaksTaken;
+    totalBreaks += 0; // breaks_taken field removed
   }
   
   // Add current session breaks if active
   final activeSession = ref.read(activePracticeSessionProvider);
   if (activeSession.hasActiveSession && activeSession.session != null) {
-    totalBreaks += activeSession.session!.breaksTaken;
+    totalBreaks += 0; // breaks_taken field removed
   }
   
   return totalBreaks;

@@ -228,20 +228,27 @@ class SpotService {
     }
     
     return spots;
-  }  Future<void> deleteSpot(String id) async {
+  }
+  
+  Future<void> deleteSpot(String id) async {
+    print('SpotService: Deleting spot with id: $id');
     final db = await database;
-    await db.delete(
+    
+    // Delete from spots table
+    final spotsDeleted = await db.delete(
       'spots',
       where: 'id = ?',
       whereArgs: [id],
     );
+    print('SpotService: Deleted $spotsDeleted spots from database');
     
     // Also delete history
-    await db.delete(
+    final historyDeleted = await db.delete(
       'spot_history',
       where: 'spotId = ?',
       whereArgs: [id],
     );
+    print('SpotService: Deleted $historyDeleted history records');
   }
   
   Future<void> saveSpotHistory(SpotHistory history) async {

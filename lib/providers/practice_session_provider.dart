@@ -7,6 +7,7 @@ import '../services/data_service.dart';
 import '../services/spot_service.dart';
 import '../services/database_service.dart';
 import '../services/ai_practice_selector.dart';
+import '../services/micro_breaks_service.dart';
 import 'unified_library_provider.dart';
 import 'practice_provider.dart';
 
@@ -18,6 +19,7 @@ class ActivePracticeSessionState {
   final int currentSpotIndex;
   final bool isActive;
   final bool isRunning;
+  final bool isCompleted;
   final DateTime? sessionStartTime;
   final Map<String, SpotResult> spotResults;
 
@@ -28,11 +30,12 @@ class ActivePracticeSessionState {
     this.currentSpotIndex = 0,
     this.isActive = false,
     this.isRunning = false,
+    this.isCompleted = false,
     this.sessionStartTime,
     this.spotResults = const {},
   });
 
-  bool get hasActiveSession => session != null && isActive;
+  bool get hasActiveSession => session != null && (isActive || isCompleted);
   int get totalSpots => selectedSpots.length;
   int get completedSpots => spotResults.length;
   double get progress => totalSpots > 0 ? completedSpots / totalSpots : 0.0;
@@ -45,6 +48,7 @@ class ActivePracticeSessionState {
     int? currentSpotIndex,
     bool? isActive,
     bool? isRunning,
+    bool? isCompleted,
     DateTime? sessionStartTime,
     Map<String, SpotResult>? spotResults,
   }) {
@@ -55,6 +59,7 @@ class ActivePracticeSessionState {
       currentSpotIndex: currentSpotIndex ?? this.currentSpotIndex,
       isActive: isActive ?? this.isActive,
       isRunning: isRunning ?? this.isRunning,
+      isCompleted: isCompleted ?? this.isCompleted,
       sessionStartTime: sessionStartTime ?? this.sessionStartTime,
       spotResults: spotResults ?? this.spotResults,
     );
@@ -173,15 +178,16 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       }
       
       // Create practice session
+      final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
       final session = PracticeSession(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: sessionId,
         name: '${actualProject.name} - ${sessionType.displayName}',
         type: sessionType,
         status: SessionStatus.active,
         plannedDuration: actualProject.dailyPracticeGoal,
         spotSessions: selectedSpots.map((spot) => SpotSession(
           id: 'session_${spot.id}',
-          sessionId: DateTime.now().millisecondsSinceEpoch.toString(),
+          sessionId: sessionId, // Use the same session ID
           spotId: spot.id,
           orderIndex: selectedSpots.indexOf(spot),
           allocatedTime: Duration(minutes: spot.recommendedPracticeTime),
@@ -215,6 +221,77 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       
     } catch (e) {
       print('Error starting practice session: $e');
+    }
+  }
+
+  /// Start a practice session for a single specific spot
+  Future<void> startSingleSpotSession(Spot spot) async {
+    try {
+      print('[Practice] Starting single spot session for: ${spot.title}');
+      
+      // Get the piece for this spot
+      final unifiedLibraryState = _ref.read(unifiedLibraryProvider);
+      Piece? piece;
+      
+      await unifiedLibraryState.when(
+        data: (pieces) async {
+          piece = pieces.where((p) => p.id == spot.pieceId).firstOrNull;
+        },
+        loading: () async {},
+        error: (error, stack) async {
+          print('[Practice] Error loading unified library: $error');
+        },
+      );
+      
+      if (piece == null) {
+        throw Exception('Could not find piece for spot ${spot.title}');
+      }
+      
+      // Create a session with just this one spot
+      final sessionId = 'single_spot_${DateTime.now().millisecondsSinceEpoch}';
+      final session = PracticeSession(
+        id: sessionId,
+        name: 'Practice: ${spot.title}',
+        type: SessionType.custom,
+        status: SessionStatus.active,
+        plannedDuration: Duration(minutes: spot.recommendedPracticeTime),
+        spotSessions: [
+          SpotSession(
+            id: 'session_${spot.id}',
+            sessionId: sessionId, // Use the same session ID
+            spotId: spot.id,
+            orderIndex: 0,
+            allocatedTime: Duration(minutes: spot.recommendedPracticeTime),
+            status: SpotSessionStatus.pending,
+          ),
+        ],
+        projectId: 'single_spot_project',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      
+      // Start the session with this single spot
+      final spotSession = session.spotSessions.first;
+      
+      state = state.copyWith(
+        session: session,
+        currentSpot: spotSession,
+        selectedSpots: [spot], // Only this one spot
+        currentSpotIndex: 0,
+        isActive: true,
+        isRunning: true,
+        sessionStartTime: DateTime.now(),
+        spotResults: {},
+      );
+      
+      // Start the spot session
+      await _startSpotSession(spotSession);
+      
+      print('[Practice] Single spot session started successfully for: ${spot.title}');
+      
+    } catch (e) {
+      print('Error starting single spot session: $e');
+      throw e;
     }
   }
 
@@ -263,15 +340,16 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       );
       
       // Create session
+      final sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
       final session = PracticeSession(
-        id: 'session_${DateTime.now().millisecondsSinceEpoch}',
+        id: sessionId,
         name: '${piece.title} Practice Session',
         type: sessionType,
         status: SessionStatus.active,
         plannedDuration: Duration(minutes: 30), // Default 30 minutes
         spotSessions: pieceSpots.map((spot) => SpotSession(
           id: 'session_${spot.id}',
-          sessionId: DateTime.now().millisecondsSinceEpoch.toString(),
+          sessionId: sessionId, // Use the same session ID
           spotId: spot.id,
           orderIndex: pieceSpots.indexOf(spot),
           allocatedTime: Duration(minutes: spot.recommendedPracticeTime),
@@ -358,7 +436,11 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
 
   /// Complete current spot with result and move to next
   Future<void> completeCurrentSpot(SpotResult result) async {
-    if (state.currentRealSpot == null || state.currentSpot == null) return;
+    print('[Practice] DEBUG: completeCurrentSpot called with result: $result');
+    if (state.currentRealSpot == null || state.currentSpot == null) {
+      print('[Practice] DEBUG: Cannot complete spot - currentRealSpot or currentSpot is null');
+      return;
+    }
     
     final currentSpot = state.currentRealSpot!;
     final currentSpotSession = state.currentSpot!;
@@ -387,31 +469,8 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
     
     print('[Practice] DEBUG: Completed spot session - Duration: ${completedSpotSession.actualDuration?.inMinutes ?? 0} min');
     
-    // IMMEDIATELY save this individual spot completion to database
-    try {
-      final individualSession = PracticeSession(
-        id: 'individual_${DateTime.now().millisecondsSinceEpoch}',
-        name: 'Individual Spot Practice',
-        type: state.session!.type,
-        status: SessionStatus.completed,
-        startTime: currentSpotSession.startTime ?? DateTime.now().subtract(Duration(minutes: 1)),
-        endTime: DateTime.now(),
-        plannedDuration: currentSpotSession.allocatedTime,
-        spotSessions: [completedSpotSession],
-        projectId: state.session!.projectId,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-      
-      await _databaseService.insertPracticeSession(individualSession);
-      print('[Practice] ✅ Saved individual spot completion to database');
-      
-      // Immediately refresh practice provider to update stats
-      _ref.read(practiceProvider.notifier).refresh();
-      print('[Practice] ✅ Refreshed practice provider after individual spot completion');
-    } catch (e) {
-      print('[Practice] ❌ Error saving individual spot completion: $e');
-    }
+    // Instead of saving individual sessions, just update the main session
+    // The main session will be saved when the full session is completed or finished
     
     // Update the session with the completed spot session
     final updatedSpotSessions = List<SpotSession>.from(state.session!.spotSessions);
@@ -466,6 +525,14 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
   Future<void> _completeSession() async {
     if (state.session == null) return;
     
+    // STOP TIMER IMMEDIATELY to prevent break popups during completion screen
+    try {
+      _ref.read(practiceTimerProvider.notifier).stopPracticeSession();
+      print('[Practice] ✅ Stopped practice timer on session completion');
+    } catch (e) {
+      print('[Practice] ❌ Error stopping practice timer: $e');
+    }
+    
     final completedSession = PracticeSession(
       id: state.session!.id,
       name: state.session!.name,
@@ -498,6 +565,16 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
     // Save completed session to DATABASE (not just SharedPreferences)
     try {
       print('[Practice] Attempting to save session to database: ${completedSession.id}');
+      print('[Practice] Session details before saving:');
+      print('[Practice]   Start Time: ${completedSession.startTime}');
+      print('[Practice]   End Time: ${completedSession.endTime}');
+      print('[Practice]   Status: ${completedSession.status}');
+      print('[Practice]   Actual Duration: ${completedSession.actualDuration?.inMinutes ?? 0} minutes');
+      print('[Practice]   Spot Sessions: ${completedSession.spotSessions.length}');
+      for (final spotSession in completedSession.spotSessions) {
+        print('[Practice]     Spot ${spotSession.spotId}: Status=${spotSession.status}, Duration=${spotSession.actualDuration?.inMinutes ?? 0} min');
+      }
+      
       await _databaseService.insertPracticeSession(completedSession);
       print('[Practice] ✅ Session saved to database successfully: ${completedSession.id}');
     } catch (e) {
@@ -525,8 +602,12 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       print('[Practice] ❌ Error refreshing practice provider: $e');
     }
     
-    // Clear active session
-    clearSession();
+    // Mark session as completed instead of clearing it
+    state = state.copyWith(
+      isActive: false,
+      isRunning: false,
+      isCompleted: true,
+    );
   }
 
   void pauseSession() {
@@ -589,6 +670,21 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
 
   void clearSession() {
     state = const ActivePracticeSessionState();
+  }
+  
+  Future<void> finishSession() async {
+    // If session exists and not already completed, complete it first
+    if (state.session != null && state.session!.status != SessionStatus.completed) {
+      print('[Practice] Manually finishing session: ${state.session!.id}');
+      await _completeSession();
+    }
+    // Then clear the session state
+    clearSession();
+  }
+  
+  void finishCompletedSession() {
+    // Called when user dismisses the completion screen
+    clearSession();
   }
 }
 

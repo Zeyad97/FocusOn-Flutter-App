@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../../providers/practice_session_provider.dart';
 import '../../providers/unified_library_provider.dart';
+import '../../providers/practice_provider.dart';
+import '../../services/spot_service.dart';
 import '../../models/practice_session.dart';
 import '../../models/spot.dart';
 import '../../models/piece.dart';
@@ -38,7 +40,9 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
   void dispose() {
     _stopTimer();
     // Stop micro-breaks timer when leaving the screen
-    ref.read(practiceTimerProvider.notifier).stopPracticeSession();
+    if (mounted) {
+      ref.read(practiceTimerProvider.notifier).stopPracticeSession();
+    }
     super.dispose();
   }
 
@@ -92,6 +96,11 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
       );
     }
 
+    // Check if session is completed
+    if (practiceState.isCompleted) {
+      return _buildCompletionScreen(practiceState, practiceNotifier);
+    }
+
     final session = practiceState.session!;
     final currentSpot = practiceState.currentSpot;
 
@@ -105,7 +114,8 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
         if (shouldExit && context.mounted) {
           _resetTimerState();
           ref.read(practiceTimerProvider.notifier).stopPracticeSession();
-          ref.read(activePracticeSessionProvider.notifier).clearSession();
+          // Cancel session (which saves it) before clearing
+          await ref.read(activePracticeSessionProvider.notifier).cancelSession();
           Navigator.of(context).pop();
         }
       },
@@ -122,7 +132,8 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
               if (shouldExit && context.mounted) {
                 _resetTimerState();
                 ref.read(practiceTimerProvider.notifier).stopPracticeSession();
-                ref.read(activePracticeSessionProvider.notifier).clearSession();
+                // Cancel session (which saves it) before clearing
+                await ref.read(activePracticeSessionProvider.notifier).cancelSession();
                 Navigator.of(context).pop();
               }
             },
@@ -449,7 +460,7 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
                       ),
                     ),
                     FilledButton.icon(
-                      onPressed: currentPiece != null ? () => _openFullPDFViewer(currentPiece!) : null,
+                      onPressed: currentPiece != null ? () => _openFullPDFViewer(currentPiece!, currentSpotDetails) : null,
                       icon: const Icon(Icons.open_in_full, size: 16),
                       label: const Text('Open Score'),
                       style: FilledButton.styleFrom(
@@ -526,7 +537,7 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Exit Practice Session?'),
-        content: const Text('Are you sure you want to exit this practice session? Your session timer will be stopped and reset.'),
+        content: const Text('Are you sure you want to exit this practice session? Your session will be saved and the timer will be stopped.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -615,8 +626,10 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
-                ref.read(activePracticeSessionProvider.notifier).clearSession();
+              onPressed: () async {
+                // Ensure session is completed and saved before clearing
+                final notifier = ref.read(activePracticeSessionProvider.notifier);
+                await notifier.finishSession();
                 Navigator.pop(context);
               },
               child: const Text('Finish Session'),
@@ -627,11 +640,14 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
     );
   }
 
-  void _openFullPDFViewer(Piece piece) {
+  void _openFullPDFViewer(Piece piece, [Spot? currentSpot]) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => PDFScoreViewer(piece: piece),
+        builder: (context) => PDFScoreViewer(
+          piece: piece,
+          initialPage: currentSpot?.pageNumber,
+        ),
       ),
     );
   }
@@ -659,18 +675,48 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
             child: const Text('Keep Spot'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               // Mark as solved and delete the spot
-              notifier.completeCurrentSpot(SpotResult.excellent);
-              // TODO: Implement spot deletion logic here
-              Navigator.pop(context);
+              final currentSpot = ref.read(activePracticeSessionProvider).currentRealSpot;
               
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Spot deleted successfully!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
+              if (currentSpot != null) {
+                try {
+                  // Complete the spot first
+                  notifier.completeCurrentSpot(SpotResult.excellent);
+                  
+                  // Delete the spot from the database
+                  await ref.read(spotServiceProvider).deleteSpot(currentSpot.id);
+                  
+                  // Refresh both providers to update the UI
+                  ref.read(practiceProvider.notifier).loadPracticeData();
+                  ref.read(unifiedLibraryProvider.notifier).refresh();
+                  
+                  Navigator.pop(context);
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Spot deleted successfully!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error deleting spot: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } else {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('No current spot to delete'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete Spot', style: TextStyle(color: Colors.white)),
@@ -735,5 +781,278 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
     if (spotId.contains('spot_3')) return '25-32';
     if (spotId.contains('spot_4')) return '33-40';
     return '1-8';
+  }
+
+  Widget _buildCompletionScreen(ActivePracticeSessionState practiceState, ActivePracticeSessionNotifier practiceNotifier) {
+    final session = practiceState.session!;
+    final totalTime = _sessionElapsed;
+    final spotsCompleted = practiceState.completedSpots;
+    final totalSpots = practiceState.totalSpots;
+    
+    // Stop the local timer when showing completion screen
+    _stopTimer();
+    
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF8B5CF6), // Purple
+              Color(0xFF3B82F6), // Blue
+              Color(0xFFFFFFFF), // White
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Back Arrow
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        practiceNotifier.finishCompletedSession();
+                        Navigator.of(context).pop();
+                      },
+                      icon: const Icon(
+                        Icons.arrow_back,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                    const Spacer(),
+                  ],
+                ),
+              ),
+              
+              // Scrollable Content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 20),
+                      
+                      // Success Icon with Animation
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.celebration,
+                          size: 60,
+                          color: Colors.white,
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 32),
+                      
+                      // Congratulations Text
+                      const Text(
+                        '🎉 Excellent Work!',
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      Text(
+                        'You\'ve completed your practice session!',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      
+                      const SizedBox(height: 48),
+                      
+                      // Stats Card
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'Session Summary',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 24),
+                            
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                _buildStatItem(
+                                  Icons.timer,
+                                  'Time',
+                                  '${totalTime.inMinutes}m ${totalTime.inSeconds % 60}s',
+                                ),
+                                _buildStatItem(
+                                  Icons.location_on,
+                                  'Spots',
+                                  '$spotsCompleted/$totalSpots',
+                                ),
+                                _buildStatItem(
+                                  Icons.trending_up,
+                                  'Progress',
+                                  '${(practiceState.progress * 100).round()}%',
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 32),
+                      
+                      // Motivational Message
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        constraints: const BoxConstraints(
+                          maxHeight: 100, // Reduced height to prevent overflow
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: SingleChildScrollView(
+                          child: Text(
+                            _getMotivationalMessage(spotsCompleted, totalSpots),
+                            style: const TextStyle(
+                              fontSize: 14, // Slightly smaller font
+                              fontStyle: FontStyle.italic,
+                              color: Colors.white,
+                              height: 1.3, // Tighter line spacing
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 40),
+                      
+                      // Action Buttons
+                      Column(
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                practiceNotifier.finishCompletedSession();
+                                Navigator.of(context).pop();
+                              },
+                              icon: const Icon(Icons.home),
+                              label: const Text('Back to Dashboard'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: const Color(0xFF6C5CE7),
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                ),
+                              ),
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 16),
+                          
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                practiceNotifier.finishCompletedSession();
+                                // Start another session - you can implement this
+                                Navigator.of(context).pop();
+                              },
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Practice More'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: Colors.white, width: 2),
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 40), // Bottom padding
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String label, String value) {
+    return Column(
+      children: [
+        Icon(
+          icon,
+          color: Colors.white,
+          size: 28,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.white.withOpacity(0.8),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _getMotivationalMessage(int completed, int total) {
+    if (completed == total) {
+      return "Perfect! You've mastered every spot in this session. Your dedication is paying off! 🌟";
+    } else if (completed >= total * 0.8) {
+      return "Outstanding work! You're building strong muscle memory. Keep up this momentum! 💪";
+    } else if (completed >= total * 0.6) {
+      return "Great progress! Every practice session brings you closer to mastery. Well done! 🎵";
+    } else {
+      return "Good start! Remember, consistency is key in music. Every practice counts! 🎹";
+    }
   }
 }

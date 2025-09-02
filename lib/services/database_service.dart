@@ -730,30 +730,59 @@ class DatabaseService {
   /// Insert practice session
   Future<void> insertPracticeSession(PracticeSession session) async {
     print('[DatabaseService] Inserting practice session: ${session.id}');
+    print('[DatabaseService] Session status being saved: ${session.status.name}');
     try {
       final db = await database;
-      await db.transaction((txn) async {
-        print('[DatabaseService] Inserting session data: ${session.toJson()}');
-        await txn.insert(
-          'practice_sessions',
-          session.toJson(),
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-        
-        // Insert spot sessions
-        print('[DatabaseService] Inserting ${session.spotSessions.length} spot sessions');
-        for (final spotSession in session.spotSessions) {
-          await txn.insert(
-            'spot_sessions',
-            spotSession.toJson(),
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
-        }
-      });
+      
+      // Create a simplified session data to test if basic insertion works
+      final sessionData = {
+        'id': session.id,
+        'name': session.name,
+        'type': session.type.name,
+        'status': session.status.name,
+        'start_time': session.startTime?.millisecondsSinceEpoch,
+        'end_time': session.endTime?.millisecondsSinceEpoch,
+        'planned_duration': session.plannedDuration.inMilliseconds,
+        'micro_breaks_enabled': session.microBreaksEnabled ? 1 : 0,
+        'micro_break_interval': session.microBreakInterval.inMilliseconds,
+        'micro_break_duration': session.microBreakDuration.inMilliseconds,
+        'project_id': session.projectId,
+        'metadata': null, // Simplify metadata to avoid JSON serialization issues
+        'created_at': session.createdAt.millisecondsSinceEpoch,
+        'updated_at': session.updatedAt.millisecondsSinceEpoch,
+      };
+      
+      print('[DatabaseService] Inserting session data: $sessionData');
+      
+      await db.insert(
+        'practice_sessions',
+        sessionData,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      
       print('[DatabaseService] ✅ Practice session inserted successfully: ${session.id}');
+      
+      // Debug: Check if it actually got saved with correct status
+      final savedSessions = await db.query('practice_sessions', where: 'id = ?', whereArgs: [session.id]);
+      if (savedSessions.isNotEmpty) {
+        print('[DatabaseService] ✅ Verified saved session status: ${savedSessions.first['status']}');
+      }
+      
+      final count = await db.rawQuery('SELECT COUNT(*) as count FROM practice_sessions');
+      print('[DatabaseService] ✅ Total sessions in database after insert: ${count.first['count']}');
     } catch (e) {
       print('[DatabaseService] ❌ Error inserting practice session: $e');
       rethrow;
+    }
+  }
+
+  /// DEBUG: Get all spots from database to check what exists
+  Future<void> debugListAllSpots() async {
+    final db = await database;
+    final results = await db.query('spots');
+    print('[DatabaseService] DEBUG: Found ${results.length} spots in database:');
+    for (final spot in results) {
+      print('[DatabaseService] DEBUG:   Spot ID: ${spot['id']}, Title: ${spot['title']}');
     }
   }
 
@@ -908,25 +937,39 @@ class DatabaseService {
   Future<List<PracticeSession>> getTodayPracticeSessions() async {
     print('[DatabaseService] Getting today\'s practice sessions');
     final db = await database;
+    
+    // FIRST: Debug - let's see ALL sessions in the database
+    final allSessions = await db.query('practice_sessions', orderBy: 'start_time DESC');
+    print('[DatabaseService] DEBUG: Total sessions in database: ${allSessions.length}');
+    for (final session in allSessions) {
+      final startTime = session['start_time'] as int?;
+      final endTime = session['end_time'] as int?;
+      print('[DatabaseService] DEBUG: Session ${session['id']} - Status: ${session['status']} - Start: ${startTime != null ? DateTime.fromMillisecondsSinceEpoch(startTime) : 'null'} - End: ${endTime != null ? DateTime.fromMillisecondsSinceEpoch(endTime) : 'null'}');
+    }
+    
     final todayStart = DateTime.now().copyWith(hour: 0, minute: 0, second: 0, millisecond: 0).millisecondsSinceEpoch;
     final todayEnd = DateTime.now().copyWith(hour: 23, minute: 59, second: 59, millisecond: 999).millisecondsSinceEpoch;
     
     print('[DatabaseService] Searching for sessions between $todayStart and $todayEnd');
+    print('[DatabaseService] Today start timestamp: $todayStart (${DateTime.fromMillisecondsSinceEpoch(todayStart)})');
+    print('[DatabaseService] Today end timestamp: $todayEnd (${DateTime.fromMillisecondsSinceEpoch(todayEnd)})');
     
     final results = await db.query(
       'practice_sessions',
-      where: 'created_at >= ? AND created_at <= ?',
+      where: 'start_time >= ? AND start_time <= ?',
       whereArgs: [todayStart, todayEnd],
-      orderBy: 'created_at DESC',
+      orderBy: 'start_time DESC',
     );
     
     print('[DatabaseService] Found ${results.length} practice sessions for today');
     
     List<PracticeSession> sessions = [];
     for (final row in results) {
-      print('[DatabaseService] Processing session: ${row['id']}');
+      print('[DatabaseService] Processing session: ${row['id']} - Status: ${row['status']} - Start: ${row['start_time']} - End: ${row['end_time']}');
       final spotSessions = await _getSpotSessionsForPracticeSession(row['id'] as String);
-      sessions.add(_practiceSessionFromMap(row, spotSessions));
+      final session = _practiceSessionFromMap(row, spotSessions);
+      print('[DatabaseService] Session ${session.id}: Duration=${session.actualDuration?.inMinutes ?? 0} min, SpotSessions=${session.spotSessions.length}');
+      sessions.add(session);
     }
     
     print('[DatabaseService] Returning ${sessions.length} practice sessions');
@@ -963,6 +1006,18 @@ class DatabaseService {
 
   /// Convert database row to PracticeSession
   PracticeSession _practiceSessionFromMap(Map<String, dynamic> map, List<SpotSession> spotSessions) {
+    print('[DatabaseService] DEBUG: Converting database row to PracticeSession');
+    print('[DatabaseService] DEBUG: Raw status from database: "${map['status']}"');
+    
+    SessionStatus status;
+    try {
+      status = SessionStatusExtension.fromString(map['status'] as String);
+      print('[DatabaseService] DEBUG: Converted status: $status');
+    } catch (e) {
+      print('[DatabaseService] WARNING: Failed to parse status "${map['status']}", defaulting to planned. Error: $e');
+      status = SessionStatus.planned;
+    }
+    
     return PracticeSession(
       id: map['id'] as String,
       name: map['name'] as String,
@@ -970,10 +1025,7 @@ class DatabaseService {
         (t) => t.toString() == map['type'],
         orElse: () => SessionType.smart,
       ),
-      status: SessionStatus.values.firstWhere(
-        (s) => s.toString() == map['status'],
-        orElse: () => SessionStatus.planned,
-      ),
+      status: status,
       startTime: map['start_time'] != null ? DateTime.fromMillisecondsSinceEpoch(map['start_time'] as int) : null,
       endTime: map['end_time'] != null ? DateTime.fromMillisecondsSinceEpoch(map['end_time'] as int) : null,
       plannedDuration: Duration(milliseconds: map['planned_duration'] as int),
