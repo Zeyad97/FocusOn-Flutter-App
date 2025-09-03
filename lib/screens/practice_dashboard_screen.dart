@@ -942,7 +942,7 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  'Smart Sessions',
+                  'Practice Sessions',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -1482,7 +1482,7 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
         type = SessionType.maintenance;
         break;
       default:
-        type = SessionType.smart;
+        type = SessionType.critical; // Default to critical instead of smart
     }
     
     // Start real practice session using the practice session provider
@@ -1651,10 +1651,58 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
   }
 
   Future<void> _startPracticeSessionForPiece(Piece piece) async {
+    // Show session type selection dialog
+    final sessionType = await showDialog<SessionType>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Choose Practice Type'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Select how you want to practice "${piece.title}":'),
+            const SizedBox(height: 16),
+            // Temporarily removed Smart Practice option
+            // ListTile(
+            //   leading: Icon(Icons.psychology, color: AppColors.primaryPurple),
+            //   title: Text('Smart Practice'),
+            //   subtitle: Text('Practice ALL spots with AI prioritization'),
+            //   onTap: () => Navigator.pop(context, SessionType.smart),
+            // ),
+            ListTile(
+              leading: Icon(Icons.warning_amber, color: AppColors.spotRed),
+              title: Text('Critical Focus'),
+              subtitle: Text('Practice ONLY red (critical) spots'),
+              onTap: () => Navigator.pop(context, SessionType.critical),
+            ),
+            ListTile(
+              leading: Icon(Icons.balance, color: AppColors.spotYellow),
+              title: Text('Balanced Practice'),
+              subtitle: Text('Practice ONLY yellow/blue (medium) spots'),
+              onTap: () => Navigator.pop(context, SessionType.balanced),
+            ),
+            ListTile(
+              leading: Icon(Icons.tune, color: AppColors.spotGreen),
+              title: Text('Maintenance'),
+              subtitle: Text('Practice ONLY green (mastered) spots'),
+              onTap: () => Navigator.pop(context, SessionType.maintenance),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (sessionType == null) return;
+
     try {
-      // Start a practice session for the selected piece
+      // Start a practice session for the selected piece with chosen type
       await ref.read(activePracticeSessionProvider.notifier)
-          .startPieceSession(piece, SessionType.smart);
+          .startPieceSession(piece, sessionType);
       
       if (mounted) {
         Navigator.push(

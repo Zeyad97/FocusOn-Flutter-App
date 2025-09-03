@@ -10,6 +10,7 @@ import '../services/ai_practice_selector.dart';
 import '../services/micro_breaks_service.dart';
 import 'unified_library_provider.dart';
 import 'practice_provider.dart';
+import 'app_settings_provider.dart';
 
 // Real practice session state
 class ActivePracticeSessionState {
@@ -151,7 +152,14 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
           selectedSpots = AiPracticeSelector.selectCriticalSpots(projectSpots);
           break;
         case SessionType.balanced:
-          selectedSpots = AiPracticeSelector.selectBalancedSpots(projectSpots);
+          // Get review frequency settings from app settings
+          final appSettings = _ref.read(appSettingsProvider);
+          selectedSpots = AiPracticeSelector.selectBalancedSpots(
+            projectSpots,
+            criticalFrequency: appSettings.criticalSpotsFrequency,
+            reviewFrequency: appSettings.reviewSpotsFrequency,
+            maintenanceFrequency: appSettings.maintenanceSpotsFrequency,
+          );
           break;
         case SessionType.maintenance:
           selectedSpots = AiPracticeSelector.selectRepertoireSpots(projectSpots);
@@ -328,6 +336,55 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       
       print('[Practice] Found ${pieceSpots.length} spots for piece');
       
+      // Apply session type filtering to piece spots
+      print('[Practice] Applying filtering for session type: $sessionType');
+      List<Spot> selectedSpots;
+      switch (sessionType) {
+        case SessionType.smart:
+          // Smart practice: Include ALL active spots with AI prioritization
+          selectedSpots = pieceSpots.where((s) => s.isActive).toList();
+          // Apply AI prioritization but keep all spots
+          if (selectedSpots.isNotEmpty) {
+            selectedSpots = AiPracticeSelector.selectAiPoweredSpots(
+              selectedSpots,
+              sessionDuration: Duration(minutes: 30),
+              maxSpots: selectedSpots.length, // Use ALL spots for smart practice
+            );
+          }
+          break;
+        case SessionType.critical:
+          selectedSpots = AiPracticeSelector.selectCriticalSpots(pieceSpots);
+          break;
+        case SessionType.balanced:
+          // Get review frequency settings from app settings
+          final appSettings = _ref.read(appSettingsProvider);
+          selectedSpots = AiPracticeSelector.selectBalancedSpots(
+            pieceSpots,
+            criticalFrequency: appSettings.criticalSpotsFrequency,
+            reviewFrequency: appSettings.reviewSpotsFrequency,
+            maintenanceFrequency: appSettings.maintenanceSpotsFrequency,
+          );
+          break;
+        case SessionType.maintenance:
+          selectedSpots = AiPracticeSelector.selectRepertoireSpots(pieceSpots);
+          break;
+        case SessionType.warmup:
+          selectedSpots = AiPracticeSelector.selectWarmupSpots(pieceSpots);
+          break;
+        case SessionType.custom:
+          selectedSpots = pieceSpots; // Use all spots for custom
+          break;
+      }
+      
+      print('[Practice] Session type $sessionType filtered to ${selectedSpots.length} spots');
+      
+      // If no spots match the filter, show a message
+      if (selectedSpots.isEmpty) {
+        print('[Practice] No spots found for session type $sessionType');
+        // You could throw an exception or show a message to the user here
+        throw Exception('No spots available for ${sessionType.displayName} practice. Try a different session type.');
+      }
+      
       // Create a temporary project for this piece
       final tempProject = Project(
         id: 'temp_${piece.id}',
@@ -343,15 +400,15 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       final sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
       final session = PracticeSession(
         id: sessionId,
-        name: '${piece.title} Practice Session',
+        name: '${piece.title} Practice Session - ${sessionType.displayName}',
         type: sessionType,
         status: SessionStatus.active,
         plannedDuration: Duration(minutes: 30), // Default 30 minutes
-        spotSessions: pieceSpots.map((spot) => SpotSession(
+        spotSessions: selectedSpots.map((spot) => SpotSession(
           id: 'session_${spot.id}',
           sessionId: sessionId, // Use the same session ID
           spotId: spot.id,
-          orderIndex: pieceSpots.indexOf(spot),
+          orderIndex: selectedSpots.indexOf(spot),
           allocatedTime: Duration(minutes: spot.recommendedPracticeTime),
           status: SpotSessionStatus.pending,
         )).toList(),
@@ -363,7 +420,7 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
       state = state.copyWith(
         session: session,
         currentSpot: session.spotSessions.first, // Auto-select first spot
-        selectedSpots: pieceSpots,
+        selectedSpots: selectedSpots, // Use filtered spots, not all piece spots
         currentSpotIndex: 0,
         isActive: true,
         isRunning: true, // Start running so user can practice immediately
@@ -376,7 +433,7 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
         await _startSpotSession(session.spotSessions.first);
       }
       
-      print('[Practice] Piece session started successfully with ${pieceSpots.length} spots');
+      print('[Practice] Piece session started successfully with ${selectedSpots.length} filtered spots');
       print('[Practice] Session state: isActive=${state.isActive}, hasActiveSession=${state.hasActiveSession}');
       print('[Practice] Session status: ${session.status}');
       
