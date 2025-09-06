@@ -1076,7 +1076,7 @@ class _FullScreenSpotEditorState extends ConsumerState<_FullScreenSpotEditor> {
       Navigator.pop(context, true); // Return true to indicate success
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Spot "${_titleController.text}" saved successfully!'),
+          content: Text('Spot "${_titleController.text}" saved successfully! - Please Reopen The Piece'),
           backgroundColor: AppColors.successGreen,
         ),
       );
@@ -1122,7 +1122,7 @@ class _FullScreenSpotEditorState extends ConsumerState<_FullScreenSpotEditor> {
                 Navigator.pop(context, true); // Close editor with success result
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Spot deleted successfully'),
+                    content: Text('Spot deleted successfully - Please Reopen The Piece'),
                     backgroundColor: AppColors.successGreen,
                   ),
                 );

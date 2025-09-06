@@ -6,12 +6,16 @@ class AnnotationFilterPanel extends StatefulWidget {
   final AnnotationFilter currentFilter;
   final Function(AnnotationFilter) onFilterChanged;
   final VoidCallback onClose;
+  final List<Annotation> filteredAnnotations;
+  final int totalAnnotations;
 
   const AnnotationFilterPanel({
     super.key,
     required this.currentFilter,
     required this.onFilterChanged,
     required this.onClose,
+    required this.filteredAnnotations,
+    required this.totalAnnotations,
   });
 
   @override

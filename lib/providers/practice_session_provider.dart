@@ -119,8 +119,11 @@ class ActivePracticeSessionNotifier extends StateNotifier<ActivePracticeSessionS
         
         // Get spots from database (not just library)
         final allDatabaseSpots = await _spotService.getAllActiveSpots();
+        // Filter spots to match pieces assigned to this project
+        final projectPieceIds = actualProject.pieceIds.toSet();
+        print('[Practice] Project "${actualProject.name}" has piece IDs: ${projectPieceIds.toList()}');
         projectSpots = allDatabaseSpots
-            .where((spot) => spot.pieceId.startsWith(actualProject.name))
+            .where((spot) => projectPieceIds.contains(spot.pieceId))
             .toList();
         print('[Practice] Project spots from DATABASE: ${projectSpots.length}');
         

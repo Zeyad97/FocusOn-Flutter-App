@@ -564,11 +564,22 @@ class AnnotationLayer {
 
   /// Create from JSON
   factory AnnotationLayer.fromJson(Map<String, dynamic> json) {
+    // Handle boolean conversion from SQLite INTEGER (0/1) to bool
+    bool isVisible = true;
+    final visibleValue = json['is_visible'];
+    if (visibleValue is bool) {
+      isVisible = visibleValue;
+    } else if (visibleValue is int) {
+      isVisible = visibleValue == 1;
+    } else if (visibleValue == null) {
+      isVisible = true;
+    }
+    
     return AnnotationLayer(
       id: json['id'],
       name: json['name'],
       colorTag: ColorTag.values[json['color_tag'] ?? 0],
-      isVisible: json['is_visible'] ?? true,
+      isVisible: isVisible,
       createdAt: DateTime.fromMillisecondsSinceEpoch(json['created_at']),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(json['updated_at']),
     );
@@ -612,9 +623,12 @@ class AnnotationFilter {
 
   /// Apply filter to list of annotations with performance optimization
   List<Annotation> apply(List<Annotation> annotations) {
-    if (showAll && 
-        (colorTags == null || colorTags!.isEmpty) && 
-        (tools == null || tools!.isEmpty)) {
+    // Check if no filters are active at all
+    bool hasColorFilter = colorTags != null && colorTags!.isNotEmpty;
+    bool hasToolFilter = tools != null && tools!.isNotEmpty;
+    bool hasDateFilter = showToday || showLast7Days || (!showAll && (customStart != null || customEnd != null));
+    
+    if (!hasColorFilter && !hasToolFilter && !hasDateFilter) {
       return annotations; // No filtering needed
     }
 
@@ -633,9 +647,17 @@ class AnnotationFilter {
 
   /// Get annotations that should be faded (non-matching when fadeNonMatching is true)
   List<Annotation> getFadedAnnotations(List<Annotation> allAnnotations) {
-    if (!fadeNonMatching || 
-        (showAll && (colorTags == null || colorTags!.isEmpty) && (tools == null || tools!.isEmpty))) {
+    if (!fadeNonMatching) {
       return []; // No fading needed
+    }
+    
+    // Check if no filters are active at all
+    bool hasColorFilter = colorTags != null && colorTags!.isNotEmpty;
+    bool hasToolFilter = tools != null && tools!.isNotEmpty;
+    bool hasDateFilter = showToday || showLast7Days || (!showAll && (customStart != null || customEnd != null));
+    
+    if (!hasColorFilter && !hasToolFilter && !hasDateFilter) {
+      return []; // No fading needed when no filters are active
     }
 
     return allAnnotations.where((annotation) {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_settings_provider.dart';
 import '../providers/practice_session_provider.dart';
@@ -88,12 +89,16 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
         isBreakDialogShown: false,
       );
     } else {
-      // Resuming - just restart timer with current state
+      // Resuming - preserve the current break state
+      debugPrint('MicroBreaksService: Resuming session. Preserving state - isOnBreak: ${state.isOnBreak}, timeUntilBreak: ${state.timeUntilBreak}');
+      
       state = state.copyWith(
         isRunning: true,
-        isOnBreak: false,
+        // Don't change isOnBreak - preserve current state
         isBreakDialogShown: false,
       );
+      
+      debugPrint('MicroBreaksService: Session resumed. Current state - isOnBreak: ${state.isOnBreak}, timeUntilBreak: ${state.timeUntilBreak}');
     }
 
     _timer?.cancel();
@@ -244,8 +249,12 @@ class PracticeTimerNotifier extends StateNotifier<PracticeTimerState> {
   }
 
   void pausePracticeSession() {
+    debugPrint('MicroBreaksService: Pausing session. Current state - isOnBreak: ${state.isOnBreak}, timeUntilBreak: ${state.timeUntilBreak}');
+    
     _timer?.cancel();
     state = state.copyWith(isRunning: false);
+    
+    debugPrint('MicroBreaksService: Session paused. State preserved - isOnBreak: ${state.isOnBreak}, timeUntilBreak: ${state.timeUntilBreak}');
   }
 
   void stopPracticeSession() {

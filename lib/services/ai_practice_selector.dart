@@ -10,28 +10,23 @@ class AiPracticeSelector {
   /// Smart Practice: Uses AI to practice ALL spots with intelligent prioritization
   static List<Spot> selectAiPoweredSpots(
     List<Spot> allSpots, {
-    int maxSpots = 15, // Increased to allow more spots in smart practice
+    int? maxSpots,
     Duration? sessionDuration,
     Project? project,
     List<PracticeSession>? practiceHistory,
   }) {
     print('AiPracticeSelector: Smart Practice called with ${allSpots.length} spots');
-    
     if (allSpots.isEmpty) return [];
-    
     final activeSpots = allSpots.where((s) => s.isActive).toList();
     print('AiPracticeSelector: ${activeSpots.length} active spots available for smart practice');
-    
-    // Smart practice should include ALL active spots but prioritize them intelligently
-    // Use REAL AI that learns from your practice patterns and prioritizes all spots
+    // Always include ALL active spots, sorted/prioritized by AI
     final smartSpots = MusicalAI.selectIntelligentPracticeSpots(
-      activeSpots, // Pass all active spots
+      activeSpots,
       project: project ?? _createDefaultProject(),
       practiceHistory: practiceHistory ?? [],
       sessionDuration: sessionDuration ?? const Duration(minutes: 30),
-      maxSpots: maxSpots >= activeSpots.length ? activeSpots.length : maxSpots, // Ensure we can get all spots
+      maxSpots: activeSpots.length, // Always include all spots
     );
-    
     print('AiPracticeSelector: Smart Practice selected ${smartSpots.length} prioritized spots from all available spots');
     return smartSpots;
   }

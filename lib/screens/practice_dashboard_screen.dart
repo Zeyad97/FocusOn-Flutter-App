@@ -1661,13 +1661,13 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
           children: [
             Text('Select how you want to practice "${piece.title}":'),
             const SizedBox(height: 16),
-            // Temporarily removed Smart Practice option
-            // ListTile(
-            //   leading: Icon(Icons.psychology, color: AppColors.primaryPurple),
-            //   title: Text('Smart Practice'),
-            //   subtitle: Text('Practice ALL spots with AI prioritization'),
-            //   onTap: () => Navigator.pop(context, SessionType.smart),
-            // ),
+            // Smart Practice option - Practice ALL spots with AI prioritization
+            ListTile(
+              leading: Icon(Icons.psychology, color: AppColors.primaryPurple),
+              title: Text('Smart Practice'),
+              subtitle: Text('Practice ALL spots (AI order, based on review frequency & difficulty)'),
+              onTap: () => Navigator.pop(context, SessionType.smart),
+            ),
             ListTile(
               leading: Icon(Icons.warning_amber, color: AppColors.spotRed),
               title: Text('Critical Focus'),

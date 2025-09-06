@@ -40,8 +40,12 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
   void dispose() {
     _stopTimer();
     // Stop micro-breaks timer when leaving the screen
-    if (mounted) {
+    // Note: Don't use ref after dispose() is called
+    try {
       ref.read(practiceTimerProvider.notifier).stopPracticeSession();
+    } catch (e) {
+      // Widget already disposed, timer will be cleaned up automatically
+      print('Practice session screen disposed, timer cleanup handled automatically');
     }
     super.dispose();
   }

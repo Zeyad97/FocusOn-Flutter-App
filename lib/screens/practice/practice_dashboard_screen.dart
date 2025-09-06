@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../theme/app_theme.dart';
+import '../../models/session_type.dart';
 
 // Practice data models
 class PracticeSession {
@@ -703,11 +704,158 @@ class _PracticeDashboardScreenState extends ConsumerState<PracticeDashboardScree
   }
 
   void _startSmartPractice() {
+    // Show practice type selection dialog like in Projects screen
+    _showPracticeTypeSelectionDialog();
+  }
+
+  void _showPracticeTypeSelectionDialog() async {
+    print('DEBUG: Showing practice type selection dialog in Practice Dashboard');
+    final sessionType = await showDialog<SessionType>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primaryPurple.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.psychology,
+                color: AppColors.primaryPurple,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Choose Practice Type',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    'All Pieces',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Smart Practice option
+              Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  leading: Icon(Icons.psychology, color: AppColors.primaryPurple),
+                  title: const Text('Smart Practice'),
+                  subtitle: const Text('Practice ALL spots with AI prioritization'),
+                  onTap: () {
+                    print('DEBUG: Smart Practice option tapped in Practice Dashboard!');
+                    Navigator.pop(context, SessionType.smart);
+                  },
+                ),
+              ),
+              Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  leading: Icon(Icons.warning_amber, color: AppColors.spotRed),
+                  title: const Text('Critical Focus'),
+                  subtitle: const Text('Practice ONLY red (critical) spots'),
+                  onTap: () => Navigator.pop(context, SessionType.critical),
+                ),
+              ),
+              Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  leading: Icon(Icons.balance, color: AppColors.spotYellow),
+                  title: const Text('Balanced Practice'),
+                  subtitle: const Text('Practice ONLY yellow/blue (medium) spots'),
+                  onTap: () => Navigator.pop(context, SessionType.balanced),
+                ),
+              ),
+              Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  leading: Icon(Icons.tune, color: AppColors.spotGreen),
+                  title: const Text('Maintenance'),
+                  subtitle: const Text('Practice ONLY green (maintenance) spots'),
+                  onTap: () => Navigator.pop(context, SessionType.maintenance),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (sessionType != null) {
+      // Handle the selected practice type
+      print('DEBUG: Selected practice type in Dashboard: $sessionType');
+      _startPracticeWithType(sessionType);
+    }
+  }
+
+  void _startPracticeWithType(SessionType sessionType) {
+    // Start practice session based on selected type
+    String typeName;
+    switch (sessionType) {
+      case SessionType.smart:
+        typeName = 'Smart Practice';
+        break;
+      case SessionType.critical:
+        typeName = 'Critical Focus';
+        break;
+      case SessionType.balanced:
+        typeName = 'Balanced Practice';
+        break;
+      case SessionType.maintenance:
+        typeName = 'Maintenance';
+        break;
+    }
+    
     _showPracticeDialog(
-      'Quick Practice',
-      'Start your regular practice session',
+      typeName,
+      'Start your $typeName session',
       AppColors.primaryPurple,
-      () => _runPracticeSession('Quick Practice', 25, 5, 8.5),
+      () => _runPracticeSession(typeName, 25, 5, 8.5),
     );
   }
 

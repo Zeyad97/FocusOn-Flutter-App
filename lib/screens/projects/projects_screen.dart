@@ -1045,9 +1045,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
       return bPractice.compareTo(aPractice);
     });
 
-    int selectedDuration = 30; // Default 30 minutes
-    bool microbreakEnabled = false;
-    bool interleaveEnabled = true;
     Piece? selectedPiece;
 
     showDialog(
@@ -1260,103 +1257,36 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
                 const SizedBox(height: 16),
 
-                // Time Selection
-                Row(
-                  children: [
-                    Text(
-                      'Practice time: ',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
+                // Practice time info
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryPurple.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppColors.primaryPurple.withOpacity(0.2),
                     ),
-                    Expanded(
-                      child: Row(
-                        children: [15, 30, 45, 60].map((minutes) {
-                          final isSelected = selectedDuration == minutes;
-                          return Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 2),
-                              child: InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    selectedDuration = minutes;
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: isSelected ? AppColors.primaryPurple : Colors.transparent,
-                                    border: Border.all(
-                                      color: isSelected ? AppColors.primaryPurple : AppColors.borderLight,
-                                    ),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    '${minutes}m',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: isSelected ? Colors.white : AppColors.textPrimary,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: AppColors.primaryPurple,
+                        size: 16,
                       ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                // Advanced Options
-                Row(
-                  children: [
-                    Expanded(
-                      child: CheckboxListTile(
-                        title: const Text(
-                          'Microbreaks',
-                          style: TextStyle(fontSize: 12),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'You can adjust practice and break time from settings',
+                          style: TextStyle(
+                            color: AppColors.primaryPurple,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                        subtitle: const Text(
-                          '2-min breaks every 15 min',
-                          style: TextStyle(fontSize: 10),
-                        ),
-                        value: microbreakEnabled,
-                        onChanged: (value) {
-                          setState(() {
-                            microbreakEnabled = value ?? false;
-                          });
-                        },
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
                       ),
-                    ),
-                    Expanded(
-                      child: CheckboxListTile(
-                        title: const Text(
-                          'Interleave',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        subtitle: const Text(
-                          'Mix practice spots',
-                          style: TextStyle(fontSize: 10),
-                        ),
-                        value: interleaveEnabled,
-                        onChanged: (value) {
-                          setState(() {
-                            interleaveEnabled = value ?? false;
-                          });
-                        },
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1369,7 +1299,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
             ElevatedButton(
               onPressed: selectedPiece == null ? null : () {
                 Navigator.of(context).pop();
-                _startActualPractice(project, selectedPiece!, selectedDuration, microbreakEnabled, interleaveEnabled);
+                _startActualPractice(project, selectedPiece!);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryPurple,
@@ -1383,11 +1313,133 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     );
   }
 
-  void _startActualPractice(Project project, Piece selectedPiece, int duration, bool microbreaks, bool interleave) async {
+  void _startActualPractice(Project project, Piece selectedPiece) async {
+    // Show session type selection dialog
+    print('DEBUG: Showing practice type selection dialog with Smart Practice option');
+    final sessionType = await showDialog<SessionType>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primaryPurple.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.psychology,
+                color: AppColors.primaryPurple,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Choose Practice Type',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    selectedPiece.title,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // DEBUG: Smart Practice option should be visible here
+              Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  leading: Icon(Icons.psychology, color: AppColors.primaryPurple),
+                  title: const Text('Smart Practice'),
+                  subtitle: const Text('Practice ALL spots (AI order, based on review frequency & difficulty)'),
+                  onTap: () {
+                    print('DEBUG: Smart Practice option tapped!');
+                    Navigator.pop(context, SessionType.smart);
+                  },
+                ),
+              ),
+              Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  leading: Icon(Icons.warning_amber, color: AppColors.spotRed),
+                  title: const Text('Critical Focus'),
+                  subtitle: const Text('Practice ONLY red (critical) spots'),
+                  onTap: () => Navigator.pop(context, SessionType.critical),
+                ),
+              ),
+              Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  leading: Icon(Icons.balance, color: AppColors.spotYellow),
+                  title: const Text('Balanced Practice'),
+                  subtitle: const Text('Practice ONLY yellow/blue (medium) spots'),
+                  onTap: () => Navigator.pop(context, SessionType.balanced),
+                ),
+              ),
+              Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListTile(
+                  leading: Icon(Icons.tune, color: AppColors.spotGreen),
+                  title: const Text('Maintenance'),
+                  subtitle: const Text('Practice ONLY green (mastered) spots'),
+                  onTap: () => Navigator.pop(context, SessionType.maintenance),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    // If user canceled the dialog, return
+    if (sessionType == null) return;
+
     try {
+      // Start a practice session with the selected type
       await ref.read(activePracticeSessionProvider.notifier).startProjectPracticeSession(
         project.name,
-        SessionType.smart,
+        sessionType,
       );
 
       // Check if a session was actually created

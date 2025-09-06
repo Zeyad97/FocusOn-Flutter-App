@@ -129,7 +129,7 @@ class PracticeSessionWidget extends ConsumerWidget {
                         _buildTimerStat(
                           'Next Break',
                           timerState.isOnBreak 
-                              ? 'Break ends in'
+                              ? 'Break ends in ${MicroBreaksService.formatDuration(timerState.timeUntilBreak)}'
                               : MicroBreaksService.formatDuration(timerState.timeUntilBreak),
                           timerState.isOnBreak ? Colors.orange : AppColors.primaryPurple,
                         ),

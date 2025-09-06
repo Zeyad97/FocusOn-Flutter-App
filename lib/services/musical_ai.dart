@@ -145,46 +145,14 @@ class MusicalAI {
     // Sort by AI-calculated priority score
     analyses.sort((a, b) => b.overallPriority.compareTo(a.overallPriority));
     
-    // Use intelligent selection algorithm based on user's learning style
+    // For Smart Practice: Include ALL spots, just sorted by priority
+    // No time limits, no filtering - just intelligent ordering based on review frequency & difficulty
     final selectedSpots = <Spot>[];
-    int totalTime = 0;
-    final maxTime = sessionDuration.inMinutes;
     
-    // ALGORITHM: Balanced Learning Optimization
-    // 1. Always include highest priority critical spots
-    // 2. Balance difficulty curve for optimal learning
-    // 3. Consider user's energy and focus patterns
-    // 4. Ensure variety to prevent mental fatigue
-    
-    final criticalSpots = analyses.where((a) => a.urgency > 0.8).take(2);
-    final learningSpots = analyses.where((a) => a.learningEfficiency > 0.7 && a.urgency < 0.8);
-    final retentionSpots = analyses.where((a) => a.retentionRisk > 0.6);
-    
-    // Add critical spots first
-    for (final analysis in criticalSpots) {
+    // Add all spots in priority order (up to maxSpots limit)
+    for (final analysis in analyses) {
       if (selectedSpots.length >= maxSpots) break;
-      if (totalTime + analysis.optimalPracticeTime <= maxTime) {
-        selectedSpots.add(analysis.spot);
-        totalTime += analysis.optimalPracticeTime;
-      }
-    }
-    
-    // Add learning spots (main focus)
-    for (final analysis in learningSpots) {
-      if (selectedSpots.length >= maxSpots) break;
-      if (!selectedSpots.contains(analysis.spot) && totalTime + analysis.optimalPracticeTime <= maxTime) {
-        selectedSpots.add(analysis.spot);
-        totalTime += analysis.optimalPracticeTime;
-      }
-    }
-    
-    // Add retention spots if time allows
-    for (final analysis in retentionSpots) {
-      if (selectedSpots.length >= maxSpots) break;
-      if (!selectedSpots.contains(analysis.spot) && totalTime + analysis.optimalPracticeTime <= maxTime) {
-        selectedSpots.add(analysis.spot);
-        totalTime += analysis.optimalPracticeTime;
-      }
+      selectedSpots.add(analysis.spot);
     }
     
     return selectedSpots;

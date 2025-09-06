@@ -10,12 +10,16 @@ import '../../theme/app_theme.dart';
 import '../../services/spot_service.dart';
 import '../../services/annotation_service.dart';
 import '../../services/piece_service.dart';
+import '../../services/bluetooth_pedal_service.dart';
 import '../../providers/unified_library_provider.dart';
 import 'widgets/pdf_toolbar.dart';
 import 'widgets/spot_overlay.dart';
 import 'widgets/annotation_toolbar.dart';
+import 'widgets/annotation_toolbar_new.dart' as NewToolbar;
 import 'widgets/metronome_widget.dart';
 import 'widgets/pdf_zoom_controls.dart';
+import '../../../widgets/layer_panel.dart';
+import '../../../widgets/annotation_filter_panel.dart';
 
 /// PDF viewing modes for different reading experiences
 enum ViewMode {
@@ -62,12 +66,17 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   Spot? _selectedSpotForMoving;
   Offset? _spotDragStartPosition;
   
-  // Annotation state
+  // Annotation state - Enhanced with layers and filtering
   AppAnnotation.AnnotationTool _currentTool = AppAnnotation.AnnotationTool.pen;
   AppAnnotation.ColorTag _currentColor = AppAnnotation.ColorTag.red;
   List<AppAnnotation.Annotation> _annotations = [];
+  List<AppAnnotation.AnnotationLayer> _layers = [];
+  AppAnnotation.AnnotationLayer? _selectedLayer;
+  String _selectedLayerId = 'default';
+  AppAnnotation.AnnotationFilter _currentFilter = const AppAnnotation.AnnotationFilter();
   List<Offset> _currentDrawingPoints = [];
   bool _isDrawing = false;
+  AppAnnotation.StampType? _selectedStamp;
 
   @override
   void initState() {
@@ -78,6 +87,10 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     // Load spots and annotations from database
     _loadSpotsFromDatabase();
     _loadAnnotationsFromDatabase();
+    _loadAnnotationLayersFromDatabase();
+    
+    // Initialize Bluetooth pedal support
+    _initializeBluetoothPedal();
     
     // Navigate to initial page or last viewed page if available
     final targetPage = widget.initialPage ?? widget.piece.lastViewedPage;
@@ -90,6 +103,8 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
 
   @override
   void dispose() {
+    // Stop Bluetooth pedal listening
+    _stopBluetoothPedal();
     _pdfController.dispose();
     super.dispose();
   }
@@ -106,6 +121,12 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   void _onColorChanged(AppAnnotation.ColorTag color) {
     setState(() {
       _currentColor = color;
+    });
+  }
+
+  void _onStampSelected(AppAnnotation.StampType stamp) {
+    setState(() {
+      _selectedStamp = stamp;
     });
   }
 
@@ -140,6 +161,741 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     _clearAnnotationsFromCache();
   }
 
+  /// Transform screen coordinates to PDF document coordinates
+  Offset _transformScreenToPdfCoordinates(Offset screenPosition) {
+    // Store screen coordinates directly - let the rendering handle zoom transformation
+    // This approach stores the raw touch position for better accuracy
+    return screenPosition;
+  }
+
+  void _onTextInput(String text, Offset position) {
+    if (text.isEmpty) return;
+    
+    final layerId = _selectedLayer?.id ?? 'default';
+    
+    // Transform screen coordinates to PDF coordinates
+    final pdfPosition = _transformScreenToPdfCoordinates(position);
+    
+    final annotationData = AppAnnotation.TextData(
+      text: text,
+      position: pdfPosition,
+      fontSize: 14.0,
+      color: _getColorFromTag(_currentColor),
+    );
+    
+    final annotation = AppAnnotation.Annotation(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      pieceId: widget.piece.id,
+      page: _currentPage,
+      layerId: layerId,
+      tool: AppAnnotation.AnnotationTool.text,
+      colorTag: _currentColor,
+      data: annotationData,
+      createdAt: DateTime.now(),
+    );
+    
+    setState(() {
+      _annotations.add(annotation);
+    });
+    
+    // Save annotation to database
+    _saveAnnotationToDatabase(annotation);
+  }
+
+  void _showLayerPanel() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => DraggableScrollableSheet(
+          initialChildSize: 0.4,
+          maxChildSize: 0.8,
+          minChildSize: 0.2,
+          builder: (context, scrollController) => Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(Icons.layers, color: Theme.of(context).iconTheme.color),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Annotation Layers',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).textTheme.titleLarge?.color,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => _createNewLayer(),
+                      icon: const Icon(Icons.add),
+                      tooltip: 'Add Layer',
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Layer list
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: _layers.length,
+                  itemBuilder: (context, index) {
+                    final layer = _layers[index];
+                    final isSelected = layer.id == _selectedLayerId;
+                    
+                    return ListTile(
+                      leading: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: layer.color,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.grey),
+                        ),
+                      ),
+                      title: Text(
+                        layer.name,
+                        style: TextStyle(
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      selected: isSelected,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Icon(
+                                  Icons.visibility,
+                                  color: layer.isVisible ? null : Colors.grey,
+                                ),
+                                if (!layer.isVisible)
+                                  Icon(
+                                    Icons.close,
+                                    size: 16,
+                                    color: Colors.red,
+                                  ),
+                              ],
+                            ),
+                            onPressed: () {
+                              _toggleLayerVisibility(layer.id);
+                              setModalState(() {}); // Update the modal's UI
+                            },
+                            tooltip: layer.isVisible ? 'Hide Layer' : 'Show Layer',
+                          ),
+                          PopupMenuButton(
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'rename',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit),
+                                    SizedBox(width: 8),
+                                    Text('Rename'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete, color: Colors.red),
+                                    SizedBox(width: 8),
+                                    Text('Delete', style: TextStyle(color: Colors.red)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            onSelected: (value) {
+                              switch (value) {
+                                case 'rename':
+                                  _renameLayer(layer);
+                                  break;
+                                case 'delete':
+                                  _deleteLayer(layer.id);
+                                  break;
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      onTap: () => _onLayerChanged(layer.id),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      )),
+    );
+  }
+
+  void _showFilterPanel() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          minChildSize: 0.3,
+          builder: (context, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(Icons.filter_list, color: Theme.of(context).iconTheme.color),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Filter Annotations',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).textTheme.titleLarge?.color,
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _currentFilter = const AppAnnotation.AnnotationFilter();
+                        });
+                        setModalState(() {}); // Update modal UI
+                      },
+                      child: const Text('Reset'),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Filter options
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Color filters
+                      Text(
+                        'Filter by Color:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Theme.of(context).textTheme.titleMedium?.color,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: AppAnnotation.ColorTag.values.map((colorTag) {
+                          final color = _getColorFromTag(colorTag);
+                          final isSelected = _currentFilter.colorTags?.contains(colorTag) ?? false;
+                          
+                          return FilterChip(
+                            label: Text(colorTag.name.toUpperCase()),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              _toggleColorFilter(colorTag);
+                              setModalState(() {}); // Update modal UI
+                            },
+                            backgroundColor: color.withOpacity(0.1),
+                            selectedColor: color.withOpacity(0.3),
+                            avatar: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      
+                      const SizedBox(height: 24),
+                      
+                      // Tool filters
+                      Text(
+                        'Filter by Tool:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Theme.of(context).textTheme.titleMedium?.color,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: AppAnnotation.AnnotationTool.values.map((tool) {
+                          final isSelected = _currentFilter.tools?.contains(tool) ?? false;
+                          
+                          return FilterChip(
+                            label: Text(_getToolName(tool)),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              _toggleToolFilter(tool);
+                              setModalState(() {}); // Update modal UI
+                            },
+                            avatar: Icon(
+                              _getToolIcon(tool),
+                              size: 16,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      
+                      const SizedBox(height: 24),
+                      
+                      // Quick filters
+                      Text(
+                        'Quick Filters:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Theme.of(context).textTheme.titleMedium?.color,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      CheckboxListTile(
+                        title: const Text('Show Today'),
+                        value: _currentFilter.showToday,
+                        onChanged: (value) {
+                          setState(() {
+                            _currentFilter = _currentFilter.copyWith(
+                              showToday: value ?? false,
+                              showLast7Days: false,
+                              showAll: false,
+                            );
+                          });
+                          setModalState(() {}); // Update modal UI
+                        },
+                      ),
+                      
+                      CheckboxListTile(
+                        title: const Text('Show Last 7 Days'),
+                        value: _currentFilter.showLast7Days,
+                        onChanged: (value) {
+                          setState(() {
+                            _currentFilter = _currentFilter.copyWith(
+                              showLast7Days: value ?? false,
+                              showToday: false,
+                              showAll: false,
+                            );
+                          });
+                          setModalState(() {}); // Update modal UI
+                        },
+                      ),
+                      
+                      CheckboxListTile(
+                        title: const Text('Show All'),
+                        value: _currentFilter.showAll,
+                        onChanged: (value) {
+                          setState(() {
+                            _currentFilter = _currentFilter.copyWith(
+                              showAll: value ?? false,
+                              showToday: false,
+                              showLast7Days: false,
+                            );
+                          });
+                          setModalState(() {}); // Update modal UI
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      )),
+    );
+  }
+
+  void _toggleColorFilter(AppAnnotation.ColorTag colorTag) {
+    final currentColors = _currentFilter.colorTags?.toSet() ?? <AppAnnotation.ColorTag>{};
+    
+    if (currentColors.contains(colorTag)) {
+      currentColors.remove(colorTag);
+    } else {
+      currentColors.add(colorTag);
+    }
+    
+    setState(() {
+      _currentFilter = _currentFilter.copyWith(
+        colorTags: currentColors.isEmpty ? null : currentColors,
+      );
+    });
+  }
+
+  void _toggleToolFilter(AppAnnotation.AnnotationTool tool) {
+    final currentTools = _currentFilter.tools?.toSet() ?? <AppAnnotation.AnnotationTool>{};
+    
+    if (currentTools.contains(tool)) {
+      currentTools.remove(tool);
+    } else {
+      currentTools.add(tool);
+    }
+    
+    setState(() {
+      _currentFilter = _currentFilter.copyWith(
+        tools: currentTools.isEmpty ? null : currentTools,
+      );
+    });
+  }
+
+  void _createNewLayer() {
+    String name = '';
+    AppAnnotation.ColorTag colorTag = AppAnnotation.ColorTag.blue;
+    
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Create New Layer'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Layer Name',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) => name = value,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Color: '),
+                  ...AppAnnotation.ColorTag.values.map((tag) {
+                    final tagColor = _getColorFromTag(tag);
+                    return GestureDetector(
+                      onTap: () => setState(() => colorTag = tag),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: tagColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: colorTag == tag ? Colors.black : Colors.grey,
+                            width: colorTag == tag ? 3 : 1,
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // Close the layer panel too
+                if (name.isNotEmpty) {
+                  final layer = AppAnnotation.AnnotationLayer(
+                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    name: name,
+                    colorTag: colorTag,
+                    isVisible: true,
+                    createdAt: DateTime.now(),
+                    updatedAt: DateTime.now(),
+                  );
+                  setState(() {
+                    _layers.add(layer);
+                    _selectedLayerId = layer.id;
+                    _selectedLayer = layer;
+                  });
+                }
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _toggleLayerVisibility(String layerId) async {
+    // First update the local state
+    final layerIndex = _layers.indexWhere((layer) => layer.id == layerId);
+    if (layerIndex == -1) return;
+
+    final oldVisibility = _layers[layerIndex].isVisible;
+    
+    setState(() {
+      _layers[layerIndex] = _layers[layerIndex].copyWith(
+        isVisible: !_layers[layerIndex].isVisible,
+      );
+    });
+
+    debugPrint('PDFScoreViewer: Layer ${layerId} visibility changed from $oldVisibility to ${_layers[layerIndex].isVisible}');
+
+    // Save to database
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      await annotationService.updateLayer(widget.piece.id, _layers[layerIndex]);
+      debugPrint('PDFScoreViewer: Layer visibility updated in database');
+      
+    } catch (e) {
+      debugPrint('PDFScoreViewer: Error updating layer visibility: $e');
+      // Revert the change if database update fails
+      setState(() {
+        _layers[layerIndex] = _layers[layerIndex].copyWith(isVisible: oldVisibility);
+      });
+    }
+  }
+
+  void _renameLayer(AppAnnotation.AnnotationLayer layer) {
+    String name = layer.name;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Layer'),
+        content: TextField(
+          decoration: const InputDecoration(
+            labelText: 'Layer Name',
+            border: OutlineInputBorder(),
+          ),
+          controller: TextEditingController(text: layer.name),
+          onChanged: (value) => name = value,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              if (name.isNotEmpty && name != layer.name) {
+                setState(() {
+                  final layerIndex = _layers.indexWhere((l) => l.id == layer.id);
+                  if (layerIndex != -1) {
+                    _layers[layerIndex] = _layers[layerIndex].copyWith(name: name);
+                  }
+                });
+              }
+            },
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteLayer(String layerId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Layer'),
+        content: const Text('Are you sure you want to delete this layer? All annotations in this layer will be moved to the default layer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              
+              try {
+                // Delete from database (moves annotations to default layer)
+                final annotationService = ref.read(annotationServiceProvider);
+                await annotationService.deleteLayer(widget.piece.id, layerId, deleteAnnotations: false);
+                debugPrint('PDFScoreViewer: Layer deleted from database');
+                
+                // Update local state
+                setState(() {
+                  _layers.removeWhere((layer) => layer.id == layerId);
+                  if (_selectedLayerId == layerId) {
+                    _selectedLayerId = _layers.isNotEmpty ? _layers.first.id : 'default';
+                    _selectedLayer = _layers.isNotEmpty ? _layers.first : null;
+                  }
+                });
+                
+                // Reload annotations to reflect the layer change
+                await _loadAnnotationsFromDatabase();
+                debugPrint('PDFScoreViewer: Annotations reloaded after layer deletion');
+                
+              } catch (e) {
+                debugPrint('PDFScoreViewer: Error deleting layer: $e');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error deleting layer: $e')),
+                );
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _refreshAnnotationDisplay() {
+    setState(() {
+      // Force rebuild of the entire widget tree to update the Consumer
+      // This ensures the annotation overlay gets rebuilt with new layer visibility
+    });
+  }
+
+  String _getToolName(AppAnnotation.AnnotationTool tool) {
+    switch (tool) {
+      case AppAnnotation.AnnotationTool.pen:
+        return 'Pen';
+      case AppAnnotation.AnnotationTool.highlighter:
+        return 'Highlighter';
+      case AppAnnotation.AnnotationTool.eraser:
+        return 'Eraser';
+      case AppAnnotation.AnnotationTool.text:
+        return 'Text';
+      case AppAnnotation.AnnotationTool.stamp:
+        return 'Stamp';
+    }
+  }
+
+  IconData _getToolIcon(AppAnnotation.AnnotationTool tool) {
+    switch (tool) {
+      case AppAnnotation.AnnotationTool.pen:
+        return Icons.edit;
+      case AppAnnotation.AnnotationTool.highlighter:
+        return Icons.highlight;
+      case AppAnnotation.AnnotationTool.eraser:
+        return Icons.cleaning_services;
+      case AppAnnotation.AnnotationTool.text:
+        return Icons.text_fields;
+      case AppAnnotation.AnnotationTool.stamp:
+        return Icons.push_pin;
+    }
+  }
+
+  void _showTextInputDialog(Offset position) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        String text = '';
+        return AlertDialog(
+          title: const Text('Add Text Annotation'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue[700], size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Make a little swipe in the place you want the text',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue[700],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Enter your text...',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) => text = value,
+                maxLines: 3,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (text.isNotEmpty) {
+                  _onTextInput(text, position);
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Handle layer management changes
+  void _handleLayerVisibilityChanged() {
+    setState(() {
+      // Force rebuild of annotation overlay
+    });
+  }
+
   void _clearAnnotationsFromCache() {
     try {
       final annotationService = ref.read(annotationServiceProvider);
@@ -154,15 +910,21 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   void _onPanStart(DragStartDetails details) {
     if (!_isAnnotationMode) return;
     
+    // Handle text tool differently - show dialog instead of drawing
+    if (_currentTool == AppAnnotation.AnnotationTool.text) {
+      _showTextInputDialog(details.localPosition);
+      return;
+    }
+    
     if (_currentTool == AppAnnotation.AnnotationTool.eraser) {
       // Eraser mode - find and remove annotations at this position
-      _eraseAnnotationsAt(details.localPosition);
+      _eraseAnnotationsAt(_transformScreenToPdfCoordinates(details.localPosition));
     } else {
       // Drawing mode
       setState(() {
         _isDrawing = true;
         _currentDrawingPoints.clear();
-        _currentDrawingPoints.add(details.localPosition);
+        _currentDrawingPoints.add(_transformScreenToPdfCoordinates(details.localPosition));
       });
     }
   }
@@ -172,11 +934,11 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     
     if (_currentTool == AppAnnotation.AnnotationTool.eraser) {
       // Continue erasing
-      _eraseAnnotationsAt(details.localPosition);
+      _eraseAnnotationsAt(_transformScreenToPdfCoordinates(details.localPosition));
     } else if (_isDrawing) {
       // Continue drawing
       setState(() {
-        _currentDrawingPoints.add(details.localPosition);
+        _currentDrawingPoints.add(_transformScreenToPdfCoordinates(details.localPosition));
       });
     }
   }
@@ -189,21 +951,61 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
       return;
     }
     
+    if (_currentTool == AppAnnotation.AnnotationTool.text) {
+      // Text tool is handled differently, no drawing needed
+      return;
+    }
+    
     if (!_isDrawing) return;
     
     if (_currentDrawingPoints.isNotEmpty) {
+      final layerId = _selectedLayer?.id ?? 'default';
+      
+      dynamic annotationData;
+      
+      switch (_currentTool) {
+        case AppAnnotation.AnnotationTool.pen:
+        case AppAnnotation.AnnotationTool.highlighter:
+          annotationData = AppAnnotation.VectorPath(
+            points: List.from(_currentDrawingPoints),
+            strokeWidth: _currentTool == AppAnnotation.AnnotationTool.highlighter ? 8.0 : 2.0,
+            color: _getColorFromTag(_currentColor),
+            blendMode: _currentTool == AppAnnotation.AnnotationTool.highlighter ? BlendMode.multiply : BlendMode.srcOver,
+          );
+          break;
+        case AppAnnotation.AnnotationTool.stamp:
+          // For stamp, use the first point as position
+          annotationData = AppAnnotation.StampData(
+            type: _selectedStamp ?? AppAnnotation.StampType.fingering1,
+            position: _currentDrawingPoints.first,
+            size: 24.0,
+            color: _getColorFromTag(_currentColor),
+          );
+          break;
+        case AppAnnotation.AnnotationTool.text:
+          // Text is handled in _onPanStart now, skip
+          setState(() {
+            _currentDrawingPoints.clear();
+            _isDrawing = false;
+          });
+          return;
+        case AppAnnotation.AnnotationTool.eraser:
+          // Eraser is handled differently, skip creating annotation
+          setState(() {
+            _currentDrawingPoints.clear();
+            _isDrawing = false;
+          });
+          return;
+      }
+      
       final annotation = AppAnnotation.Annotation(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         pieceId: widget.piece.id,
         page: _currentPage,
-        layerId: 'default',
+        layerId: layerId,
         tool: _currentTool,
         colorTag: _currentColor,
-        data: AppAnnotation.VectorPath(
-          points: List.from(_currentDrawingPoints),
-          strokeWidth: _currentTool == AppAnnotation.AnnotationTool.highlighter ? 8.0 : 2.0,
-          color: _getColorFromTag(_currentColor),
-        ),
+        data: annotationData,
         createdAt: DateTime.now(),
       );
       
@@ -219,24 +1021,76 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   }
 
   void _eraseAnnotationsAt(Offset position) {
-    const double eraserRadius = 20.0; // Eraser radius in pixels
+    const double eraserRadius = 30.0; // Eraser radius in pixels
     
     setState(() {
-      _annotations.removeWhere((annotation) {
-        if (annotation.page != _currentPage) return false;
+      // Find annotations to remove
+      final annotationsToRemove = <AppAnnotation.Annotation>[];
+      
+      for (final annotation in _annotations) {
+        if (annotation.page != _currentPage) continue;
         
-        // Check if annotation intersects with eraser position
-        if (annotation.vectorPath != null) {
-          final path = annotation.vectorPath!;
-          return path.points.any((point) {
-            final distance = (point - position).distance;
-            return distance <= eraserRadius;
-          });
+        bool shouldErase = false;
+        
+        // Check different annotation types
+        switch (annotation.tool) {
+          case AppAnnotation.AnnotationTool.pen:
+          case AppAnnotation.AnnotationTool.highlighter:
+            // For path-based annotations, check if any point is within eraser radius
+            if (annotation.vectorPath != null) {
+              final path = annotation.vectorPath!;
+              shouldErase = path.points.any((point) {
+                final distance = (point - position).distance;
+                return distance <= eraserRadius;
+              });
+            }
+            break;
+            
+          case AppAnnotation.AnnotationTool.text:
+            // For text annotations, check if position is within text area
+            if (annotation.textData != null) {
+              final textPos = annotation.textData!.position;
+              final distance = (textPos - position).distance;
+              shouldErase = distance <= eraserRadius;
+            }
+            break;
+            
+          case AppAnnotation.AnnotationTool.stamp:
+            // For stamp annotations, check if position is within stamp area
+            if (annotation.stampData != null) {
+              final stampPos = annotation.stampData!.position;
+              final distance = (stampPos - position).distance;
+              shouldErase = distance <= eraserRadius;
+            }
+            break;
+            
+          case AppAnnotation.AnnotationTool.eraser:
+            // Don't erase eraser annotations
+            break;
         }
         
-        return false;
-      });
+        if (shouldErase) {
+          annotationsToRemove.add(annotation);
+        }
+      }
+      
+      // Remove annotations from UI
+      for (final annotation in annotationsToRemove) {
+        _annotations.remove(annotation);
+        // TODO: Delete from database as well
+        _deleteAnnotationFromDatabase(annotation);
+      }
     });
+  }
+
+  Future<void> _deleteAnnotationFromDatabase(AppAnnotation.Annotation annotation) async {
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      await annotationService.deleteAnnotation(annotation.id, annotation.pieceId);
+      print('PDFScoreViewer: Deleted annotation ${annotation.id} from database');
+    } catch (e) {
+      print('PDFScoreViewer: Error deleting annotation from database: $e');
+    }
   }
 
   Future<void> _saveAnnotationToDatabase(AppAnnotation.Annotation annotation) async {
@@ -332,12 +1186,18 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   }
 
   void _showSpotCreationDialog(double x, double y) {
+    // Add haptic feedback for spot creation
+    HapticFeedback.selectionClick();
+    
     showDialog(
       context: context,
       builder: (context) => SpotCreationDialog(
         position: Offset(x, y),
         page: _currentPage,
         onSpotCreated: (spot) {
+          // Add success haptic feedback
+          HapticFeedback.mediumImpact();
+          
           // Set the piece ID and add to spots list
           final updatedSpot = Spot(
             id: spot.id,
@@ -456,13 +1316,57 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
 
   void _previousPage() {
     if (_currentPage > 1) {
+      // Add haptic feedback for page navigation
+      final pedalSettings = ref.read(bluetoothPedalSettingsProvider);
+      if (pedalSettings.hapticFeedback) {
+        HapticFeedback.lightImpact();
+      }
       _pdfController.jumpToPage(_currentPage - 1);
     }
   }
 
   void _nextPage() {
     if (_currentPage < _totalPages) {
+      // Add haptic feedback for page navigation
+      final pedalSettings = ref.read(bluetoothPedalSettingsProvider);
+      if (pedalSettings.hapticFeedback) {
+        HapticFeedback.lightImpact();
+      }
       _pdfController.jumpToPage(_currentPage + 1);
+    }
+  }
+
+  // Bluetooth Pedal Integration
+  void _initializeBluetoothPedal() {
+    final pedalSettings = ref.read(bluetoothPedalSettingsProvider);
+    if (pedalSettings.isEnabled) {
+      final pedalService = ref.read(bluetoothPedalServiceProvider);
+      pedalService.startListening(
+        onNextPage: _nextPage,
+        onPreviousPage: _previousPage,
+        onToggleFullscreen: _toggleFullscreen,
+      );
+      print('PDFScoreViewer: Bluetooth pedal support enabled');
+    }
+  }
+
+  void _stopBluetoothPedal() {
+    final pedalService = ref.read(bluetoothPedalServiceProvider);
+    pedalService.stopListening();
+    print('PDFScoreViewer: Bluetooth pedal support disabled');
+  }
+
+  void _toggleFullscreen() {
+    // Toggle fullscreen mode
+    // This could hide/show the toolbar and other UI elements
+    setState(() {
+      // Implementation depends on your fullscreen requirements
+    });
+    
+    // Add haptic feedback
+    final pedalSettings = ref.read(bluetoothPedalSettingsProvider);
+    if (pedalSettings.hapticFeedback) {
+      HapticFeedback.mediumImpact();
     }
   }
 
@@ -593,6 +1497,55 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     }
   }
 
+  Future<void> _loadAnnotationLayersFromDatabase() async {
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      final layers = await annotationService.getLayersForPiece(widget.piece.id);
+      setState(() {
+        _layers = layers;
+        
+        // Create default layer if none exist
+        if (layers.isEmpty) {
+          final defaultLayer = AppAnnotation.AnnotationLayer(
+            id: 'default',
+            name: 'Default Layer',
+            colorTag: AppAnnotation.ColorTag.blue,
+            isVisible: true,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+          _layers = [defaultLayer];
+          _selectedLayer = defaultLayer;
+          _selectedLayerId = defaultLayer.id;
+        } else {
+          // Set first layer as selected if no layer is selected
+          if (_selectedLayer == null) {
+            _selectedLayer = layers.first;
+            _selectedLayerId = layers.first.id;
+          }
+        }
+      });
+      print('PDFScoreViewer: Loaded ${_layers.length} annotation layers for piece ${widget.piece.id}');
+    } catch (e) {
+      print('PDFScoreViewer: Error loading annotation layers from database: $e');
+      
+      // Create default layer on error
+      setState(() {
+        final defaultLayer = AppAnnotation.AnnotationLayer(
+          id: 'default',
+          name: 'Default Layer',
+          colorTag: AppAnnotation.ColorTag.blue,
+          isVisible: true,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        _layers = [defaultLayer];
+        _selectedLayer = defaultLayer;
+        _selectedLayerId = defaultLayer.id;
+      });
+    }
+  }
+
   Future<void> _loadAnnotationsFromDatabase() async {
     try {
       final annotationService = ref.read(annotationServiceProvider);
@@ -600,10 +1553,177 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
       setState(() {
         _annotations = annotations;
       });
-      print('PDFScoreViewer: Loaded ${annotations.length} annotations from database for piece ${widget.piece.id}');
+      print('PDFScoreViewer: Loaded ${annotations.length} annotations for piece ${widget.piece.id}');
     } catch (e) {
       print('PDFScoreViewer: Error loading annotations from database: $e');
     }
+  }
+
+  // Layer management methods
+  void _onLayerToggle(AppAnnotation.AnnotationLayer layer, bool isVisible) async {
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      final updatedLayer = layer.copyWith(isVisible: isVisible);
+      
+      await annotationService.updateLayer(widget.piece.id, updatedLayer);
+      
+      setState(() {
+        final index = _layers.indexWhere((l) => l.id == layer.id);
+        if (index != -1) {
+          _layers[index] = updatedLayer;
+        }
+      });
+    } catch (e) {
+      print('PDFScoreViewer: Error toggling layer visibility: $e');
+    }
+  }
+
+  void _onLayerCreate(AppAnnotation.AnnotationLayer layer) async {
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      await annotationService.createLayer(widget.piece.id, layer);
+      
+      setState(() {
+        _layers.add(layer);
+        _selectedLayer = layer; // Select the newly created layer
+      });
+    } catch (e) {
+      print('PDFScoreViewer: Error creating layer: $e');
+    }
+  }
+
+  void _onLayerUpdate(AppAnnotation.AnnotationLayer layer) async {
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      await annotationService.updateLayer(widget.piece.id, layer);
+      
+      setState(() {
+        final index = _layers.indexWhere((l) => l.id == layer.id);
+        if (index != -1) {
+          _layers[index] = layer;
+        }
+        
+        // Update selected layer if it's the one being updated
+        if (_selectedLayer?.id == layer.id) {
+          _selectedLayer = layer;
+        }
+      });
+    } catch (e) {
+      print('PDFScoreViewer: Error updating layer: $e');
+    }
+  }
+
+  void _onLayerDelete(String layerId, {bool deleteAnnotations = false}) async {
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      await annotationService.deleteLayer(widget.piece.id, layerId, deleteAnnotations: deleteAnnotations);
+      
+      setState(() {
+        _layers.removeWhere((l) => l.id == layerId);
+        
+        // If we deleted the selected layer, select the first available layer
+        if (_selectedLayer?.id == layerId) {
+          _selectedLayer = _layers.isNotEmpty ? _layers.first : null;
+        }
+        
+        // Remove annotations from local list if they were deleted
+        if (deleteAnnotations) {
+          _annotations.removeWhere((a) => a.layerId == layerId);
+        } else {
+          // Update annotations to use default layer
+          for (int i = 0; i < _annotations.length; i++) {
+            if (_annotations[i].layerId == layerId) {
+              _annotations[i] = _annotations[i].copyWith(layerId: 'default');
+            }
+          }
+        }
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Layer deleted successfully'),
+          backgroundColor: AppColors.successGreen,
+        ),
+      );
+    } catch (e) {
+      print('PDFScoreViewer: Error deleting layer: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error deleting layer: $e'),
+          backgroundColor: AppColors.errorRed,
+        ),
+      );
+    }
+  }
+
+  void _onLayerSelected(AppAnnotation.AnnotationLayer layer) {
+    setState(() {
+      _selectedLayer = layer;
+      _selectedLayerId = layer.id;
+    });
+  }
+
+  void _onLayerChanged(String layerId) {
+    setState(() {
+      _selectedLayerId = layerId;
+      _selectedLayer = _layers.firstWhere((layer) => layer.id == layerId, orElse: () => _layers.first);
+    });
+    print('PDFScoreViewer: Selected layer changed to: $layerId');
+  }
+
+  void _onFilterChanged(AppAnnotation.AnnotationFilter filter) {
+    setState(() {
+      _currentFilter = filter;
+    });
+    
+    // Save filter preference
+    try {
+      final annotationService = ref.read(annotationServiceProvider);
+      annotationService.saveFilterForPiece(widget.piece.id, filter);
+    } catch (e) {
+      print('PDFScoreViewer: Error saving filter: $e');
+    }
+  }
+
+  /// Helper method to check if an annotation matches the current filter
+  bool _annotationMatchesFilter(AppAnnotation.Annotation annotation, AppAnnotation.AnnotationFilter filter) {
+    // Check layer visibility
+    final layer = _layers.firstWhere((l) => l.id == annotation.layerId, orElse: () => _layers.first);
+    if (!layer.isVisible) return false;
+    
+    // Check color filter
+    if (filter.colorTags != null && filter.colorTags!.isNotEmpty && !filter.colorTags!.contains(annotation.colorTag)) {
+      return false;
+    }
+    
+    // Check tool filter
+    if (filter.tools != null && filter.tools!.isNotEmpty && !filter.tools!.contains(annotation.tool)) {
+      return false;
+    }
+    
+    // Check page filter (if we had this property)
+    // Note: Currently the filter doesn't have page filtering, but keeping this structure for future use
+    
+    // Check date range
+    if (filter.showToday) {
+      final today = DateTime.now();
+      final isToday = annotation.createdAt.year == today.year && 
+                     annotation.createdAt.month == today.month && 
+                     annotation.createdAt.day == today.day;
+      if (!isToday) return false;
+    } else if (filter.showLast7Days) {
+      final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
+      if (annotation.createdAt.isBefore(sevenDaysAgo)) return false;
+    } else if (filter.customStart != null || filter.customEnd != null) {
+      if (filter.customStart != null && annotation.createdAt.isBefore(filter.customStart!)) {
+        return false;
+      }
+      if (filter.customEnd != null && annotation.createdAt.isAfter(filter.customEnd!)) {
+        return false;
+      }
+    }
+    
+    return true;
   }
 
   Widget _buildPDFViewer() {
@@ -703,16 +1823,23 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
             
             // Annotation toolbar (only show when annotation mode is active)
             if (_isAnnotationMode)
-              AnnotationToolbar(
+              NewToolbar.AnnotationToolbar(
                 currentTool: _currentTool,
                 currentColorTag: _currentColor,
+                selectedLayerId: _selectedLayerId,
+                selectedStamp: _selectedStamp,
                 isAnnotationMode: _isAnnotationMode,
                 onToolChanged: _onToolChanged,
                 onColorChanged: _onColorChanged,
+                onLayerChanged: _onLayerChanged,
+                onStampSelected: _onStampSelected,
                 onAnnotationModeToggle: _onAnnotationModeToggle,
                 onUndo: _onUndo,
                 onRedo: _onRedo,
                 onClear: _onClear,
+                onTextInput: _onTextInput,
+                onShowFilters: _showFilterPanel,
+                onShowLayers: _showLayerPanel,
               ),
             
             // Main content area
@@ -790,14 +1917,31 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                           // Annotation overlay
                           if (_isAnnotationMode)
                             Positioned.fill(
-                              child: CustomPaint(
-                                painter: AnnotationOverlayPainter(
-                                  annotations: _annotations.where((a) => a.page == _currentPage).toList(),
-                                  currentDrawingPoints: _currentDrawingPoints,
-                                  currentTool: _currentTool,
-                                  currentColor: _currentColor,
-                                  zoomLevel: _zoomLevel,
-                                ),
+                              child: Builder(
+                                builder: (context) {
+                                  final annotationService = ref.read(annotationServiceProvider);
+                                  final visibleLayers = _layers.where((layer) => layer.isVisible).toList();
+                                  
+                                  // Apply both layer visibility and filter to annotations
+                                  final pageAnnotations = _annotations.where((a) => a.page == _currentPage).toList();
+                                  final filteredAnnotations = annotationService.filterAnnotationsAdvanced(
+                                    pageAnnotations, 
+                                    _layers, 
+                                    _currentFilter,
+                                  );
+                                  
+                                  return CustomPaint(
+                                    painter: AnnotationOverlayPainter(
+                                      annotations: filteredAnnotations,
+                                      currentDrawingPoints: _currentDrawingPoints,
+                                      currentTool: _currentTool,
+                                      currentColor: _currentColor,
+                                      zoomLevel: _zoomLevel,
+                                      filter: _currentFilter,
+                                      visibleLayers: visibleLayers,
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                           
@@ -827,6 +1971,7 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                             Positioned(
                               top: 20,
                               left: 20,
+                              right: 20, // Add right constraint to prevent overflow
                               child: Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
@@ -834,11 +1979,18 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
-                                  '✏️ ${_currentTool.name.toUpperCase()} mode - Draw on the score',
+                                  _currentTool == AppAnnotation.AnnotationTool.text
+                                      ? '✏️ TEXT mode - Swipe where you want text'
+                                      : _currentTool == AppAnnotation.AnnotationTool.eraser
+                                          ? '🗑️ ERASER mode - Swipe over annotations to delete'
+                                          : '✏️ ${_currentTool.name.toUpperCase()} mode - Draw on the score',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
+                                    fontSize: 14,
                                   ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ),
@@ -925,6 +2077,36 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
                       },
                     ),
                   ),
+
+                  // Layer Management Panel (TEMPORARILY DISABLED TO FIX LAYOUT LOOP)
+                  // if (_isAnnotationMode)
+                  //   Positioned(
+                  //     top: 20,
+                  //     right: 20,
+                  //     child: LayerPanel(
+                  //       pieceId: widget.piece.id,
+                  //       layers: _layers,
+                  //       onLayerToggle: (layer) => _onLayerToggle(layer, !layer.isVisible),
+                  //       onLayerCreate: _onLayerCreate,
+                  //       onLayerUpdate: _onLayerUpdate,
+                  //       onLayerDelete: (layerId, {bool deleteAnnotations = false}) => _onLayerDelete(layerId, deleteAnnotations: deleteAnnotations),
+                  //       onLayerSelected: (layer) => setState(() => _selectedLayerId = layer.id),
+                  //       selectedLayer: _layers.firstWhere((l) => l.id == _selectedLayerId, orElse: () => _layers.first),
+                  //     ),
+                  //   ),
+
+                  // Annotation Filter Panel (TEMPORARILY DISABLED TO FIX LAYOUT LOOP)  
+                  // if (_isAnnotationMode)
+                  //   Positioned(
+                  //     bottom: 100,
+                  //     left: 20,
+                  //     child: AnnotationFilterPanel(
+                  //       currentFilter: _currentFilter,
+                  //       onFilterChanged: _onFilterChanged,
+                  //       filteredAnnotations: _annotations.where((a) => _annotationMatchesFilter(a, _currentFilter)).length,
+                  //       totalAnnotations: _annotations.length,
+                  //     ),
+                  //   ),
                 ],
               ),
             ),
@@ -1046,6 +2228,8 @@ class AnnotationOverlayPainter extends CustomPainter {
   final AppAnnotation.AnnotationTool currentTool;
   final AppAnnotation.ColorTag currentColor;
   final double zoomLevel;
+  final AppAnnotation.AnnotationFilter? filter;
+  final List<AppAnnotation.AnnotationLayer> visibleLayers;
 
   AnnotationOverlayPainter({
     required this.annotations,
@@ -1053,13 +2237,19 @@ class AnnotationOverlayPainter extends CustomPainter {
     required this.currentTool,
     required this.currentColor,
     required this.zoomLevel,
+    this.filter,
+    this.visibleLayers = const [],
   });
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Filter annotations based on current filter and visible layers
+    final filteredAnnotations = _filterAnnotations(annotations);
+    
     // Draw existing annotations
-    for (final annotation in annotations) {
-      _drawAnnotation(canvas, annotation, size);
+    for (final annotation in filteredAnnotations) {
+      final opacity = _getAnnotationOpacity(annotation);
+      _drawAnnotation(canvas, annotation, size, opacity);
     }
 
     // Draw current drawing stroke
@@ -1068,7 +2258,72 @@ class AnnotationOverlayPainter extends CustomPainter {
     }
   }
 
-  void _drawAnnotation(Canvas canvas, AppAnnotation.Annotation annotation, Size size) {
+  List<AppAnnotation.Annotation> _filterAnnotations(List<AppAnnotation.Annotation> annotations) {
+    return annotations.where((annotation) {
+      // Check layer visibility
+      if (visibleLayers.isNotEmpty) {
+        final isLayerVisible = visibleLayers.any((layer) => layer.id == annotation.layerId && layer.isVisible);
+        if (!isLayerVisible) return false;
+      }
+      
+      // Apply annotation filter
+      if (filter != null) {
+        // Color filter
+        if (filter?.colorTags != null && filter!.colorTags!.isNotEmpty && 
+            !filter!.colorTags!.contains(annotation.colorTag)) {
+          return false;
+        }
+        
+        // Tool filter
+        if (filter?.tools != null && filter!.tools!.isNotEmpty && 
+            !filter!.tools!.contains(annotation.tool)) {
+          return false;
+        }
+        
+        // Date range filter based on filter properties
+        final now = DateTime.now();
+        
+        if (filter?.showToday == true) {
+          final today = DateTime(now.year, now.month, now.day);
+          final tomorrow = today.add(const Duration(days: 1));
+          if (annotation.createdAt.isBefore(today) || annotation.createdAt.isAfter(tomorrow)) {
+            return false;
+          }
+        } else if (filter?.showLast7Days == true) {
+          final weekAgo = now.subtract(const Duration(days: 7));
+          if (annotation.createdAt.isBefore(weekAgo)) {
+            return false;
+          }
+        } else if (filter?.customStart != null || filter?.customEnd != null) {
+          if (filter!.customStart != null && annotation.createdAt.isBefore(filter!.customStart!)) {
+            return false;
+          }
+          if (filter!.customEnd != null && annotation.createdAt.isAfter(filter!.customEnd!)) {
+            return false;
+          }
+        }
+      }
+      
+      return true;
+    }).toList();
+  }
+
+  double _getAnnotationOpacity(AppAnnotation.Annotation annotation) {
+    if (filter?.fadeNonMatching == true) {
+      // If annotation doesn't match filter criteria, fade it
+      if (filter?.colorTags != null && filter!.colorTags!.isNotEmpty && 
+          !filter!.colorTags!.contains(annotation.colorTag)) {
+        return 0.3;
+      }
+      if (filter?.tools != null && filter!.tools!.isNotEmpty && 
+          !filter!.tools!.contains(annotation.tool)) {
+        return 0.3;
+      }
+    }
+    return 1.0;
+  }
+
+  void _drawAnnotation(Canvas canvas, AppAnnotation.Annotation annotation, Size size, double opacity) {
     final paint = Paint()
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
@@ -1076,19 +2331,25 @@ class AnnotationOverlayPainter extends CustomPainter {
     switch (annotation.tool) {
       case AppAnnotation.AnnotationTool.pen:
         paint
-          ..color = _getColorFromTag(annotation.colorTag)
+          ..color = _getColorFromTag(annotation.colorTag).withOpacity(opacity)
           ..strokeWidth = 2.0 * zoomLevel
           ..style = PaintingStyle.stroke;
         break;
       case AppAnnotation.AnnotationTool.highlighter:
         paint
-          ..color = _getColorFromTag(annotation.colorTag).withOpacity(0.3)
+          ..color = _getColorFromTag(annotation.colorTag).withOpacity(0.3 * opacity)
           ..strokeWidth = 8.0 * zoomLevel
           ..style = PaintingStyle.stroke;
         break;
+      case AppAnnotation.AnnotationTool.text:
+        _drawText(canvas, annotation, opacity);
+        return;
+      case AppAnnotation.AnnotationTool.stamp:
+        _drawStamp(canvas, annotation, opacity);
+        return;
       default:
         paint
-          ..color = _getColorFromTag(annotation.colorTag)
+          ..color = _getColorFromTag(annotation.colorTag).withOpacity(opacity)
           ..strokeWidth = 2.0 * zoomLevel
           ..style = PaintingStyle.stroke;
         break;
@@ -1097,6 +2358,100 @@ class AnnotationOverlayPainter extends CustomPainter {
     if (annotation.data is AppAnnotation.VectorPath) {
       final vectorPath = annotation.data as AppAnnotation.VectorPath;
       _drawPath(canvas, vectorPath.points, paint, size);
+    }
+  }
+
+  void _drawText(Canvas canvas, AppAnnotation.Annotation annotation, double opacity) {
+    if (annotation.data is! AppAnnotation.TextData) return;
+    
+    final textData = annotation.data as AppAnnotation.TextData;
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: textData.text,
+        style: TextStyle(
+          color: _getColorFromTag(annotation.colorTag).withOpacity(opacity),
+          fontSize: textData.fontSize,
+          fontWeight: FontWeight.bold,
+          shadows: [
+            Shadow(
+              offset: const Offset(1, 1),
+              blurRadius: 2,
+              color: Colors.black.withOpacity(0.5),
+            ),
+          ],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        textData.position.dx,
+        textData.position.dy,
+      ),
+    );
+  }
+
+  void _drawStamp(Canvas canvas, AppAnnotation.Annotation annotation, double opacity) {
+    if (annotation.data is! AppAnnotation.StampData) return;
+    
+    final stampData = annotation.data as AppAnnotation.StampData;
+    final symbol = _getStampSymbol(stampData.type);
+    
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: symbol,
+        style: TextStyle(
+          color: _getColorFromTag(annotation.colorTag).withOpacity(opacity),
+          fontSize: stampData.size,
+          fontWeight: FontWeight.bold,
+          shadows: [
+            Shadow(
+              offset: const Offset(1, 1),
+              blurRadius: 2,
+              color: Colors.black.withOpacity(0.5),
+            ),
+          ],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    textPainter.layout();
+    
+    // Center the stamp on the position
+    final offset = Offset(
+      stampData.position.dx - (textPainter.width / 2),
+      stampData.position.dy - (textPainter.height / 2),
+    );
+    
+    textPainter.paint(canvas, offset);
+  }
+
+  String _getStampSymbol(AppAnnotation.StampType stamp) {
+    switch (stamp) {
+      case AppAnnotation.StampType.fingering1:
+        return '1';
+      case AppAnnotation.StampType.fingering2:
+        return '2';
+      case AppAnnotation.StampType.fingering3:
+        return '3';
+      case AppAnnotation.StampType.fingering4:
+        return '4';
+      case AppAnnotation.StampType.fingering5:
+        return '5';
+      case AppAnnotation.StampType.pedal:
+        return 'P';
+      case AppAnnotation.StampType.bowingUp:
+        return '↑';
+      case AppAnnotation.StampType.bowingDown:
+        return '↓';
+      case AppAnnotation.StampType.accent:
+        return '>';
+      case AppAnnotation.StampType.rehearsalLetter:
+        return 'A';
     }
   }
 
