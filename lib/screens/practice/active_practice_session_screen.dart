@@ -33,7 +33,48 @@ class _ActivePracticeSessionScreenState extends ConsumerState<ActivePracticeSess
     // Start micro-breaks timer if enabled
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(practiceTimerProvider.notifier).startPracticeSession();
+      
+      // Auto-open score when practice session starts
+      _autoOpenScore();
     });
+  }
+
+  /// Automatically open the score when practice session starts (Client Issue #6)
+  void _autoOpenScore() {
+    final practiceState = ref.read(activePracticeSessionProvider);
+    
+    if (practiceState.hasActiveSession && practiceState.session != null) {
+      final session = practiceState.session!;
+      final currentSpot = practiceState.currentSpot;
+      
+      // Get the piece for the current spot
+      final unifiedLibraryState = ref.read(unifiedLibraryProvider);
+      unifiedLibraryState.whenData((pieces) {
+        if (currentSpot != null) {
+          // Find the piece that contains this spot
+          final currentPiece = pieces.firstWhere(
+            (piece) => piece.spots.any((spot) => spot.id == currentSpot.spotId),
+            orElse: () => pieces.firstWhere(
+              (piece) => piece.id == session.projectId, // Fallback to project piece
+              orElse: () => pieces.isNotEmpty ? pieces.first : throw Exception('No pieces available'),
+            ),
+          );
+          
+          // Find the actual spot details
+          final currentSpotDetails = currentPiece.spots.firstWhere(
+            (spot) => spot.id == currentSpot.spotId,
+            orElse: () => currentPiece.spots.isNotEmpty ? currentPiece.spots.first : throw Exception('No spots available'),
+          );
+          
+          // Auto-open the PDF viewer with the current spot
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              _openFullPDFViewer(currentPiece, currentSpotDetails);
+            }
+          });
+        }
+      });
+    }
   }
 
   @override

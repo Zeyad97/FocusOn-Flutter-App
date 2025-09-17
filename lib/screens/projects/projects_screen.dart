@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../models/project.dart';
 import '../../models/piece.dart';
+import '../../models/spot.dart';
 import '../../models/practice_session.dart';
 import '../../services/data_service.dart';
 import '../../providers/practice_session_provider.dart';
@@ -453,6 +454,56 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                           ),
                         ),
                         const SizedBox(height: 4),
+                        // Show colored spot status indicators like music library
+                        pieces.when(
+                          data: (pieceList) {
+                            final projectPieces = pieceList.where((p) => project.pieceIds.contains(p.id)).toList();
+                            
+                            // Count spots by color across all pieces in project
+                            final Map<Color, int> colorCounts = {};
+                            for (final piece in projectPieces) {
+                              for (final spot in piece.spots) {
+                                final color = spot.color.visualColor;
+                                colorCounts[color] = (colorCounts[color] ?? 0) + 1;
+                              }
+                            }
+                            
+                            if (colorCounts.isNotEmpty) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Wrap(
+                                  spacing: 3,
+                                  runSpacing: 2,
+                                  children: colorCounts.entries.map((entry) {
+                                    final color = entry.key;
+                                    final count = entry.value;
+                                    return Container(
+                                      width: 16,
+                                      height: 16,
+                                      decoration: BoxDecoration(
+                                        color: color,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          '$count',
+                                          style: const TextStyle(
+                                            fontSize: 8,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          },
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, __) => const SizedBox.shrink(),
+                        ),
                         if (project.daysUntilConcert != null)
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -637,20 +688,19 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                             final index = entry.key;
                             final piece = entry.value;
                             
-                            // Use difficulty-based color instead of spot color
-                            Color difficultyColor = _getDifficultyColor(piece.difficulty);
-                            
                             return Container(
                               margin: const EdgeInsets.only(right: 4),
                               child: Tooltip(
-                                message: '${piece.title}\nDifficulty: ${piece.difficulty}/5 (${_getDifficultyLabel(piece.difficulty)})',
+                                message: '${piece.title}\n'
+                                    'Difficulty: ${_getDifficultyLabel(piece.difficulty)}\n'
+                                    'Total Spots: ${piece.spots.length}',
                                 child: Stack(
                                   children: [
                                     Container(
                                       width: 32,
                                       height: 32,
                                       decoration: BoxDecoration(
-                                        color: difficultyColor,
+                                        color: _getDifficultyColor(piece.difficulty),
                                         shape: BoxShape.circle,
                                         border: Border.all(
                                           color: Colors.white,
@@ -658,7 +708,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                                         ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: difficultyColor.withOpacity(0.3),
+                                            color: _getDifficultyColor(piece.difficulty).withOpacity(0.3),
                                             blurRadius: 4,
                                             offset: const Offset(0, 2),
                                           ),

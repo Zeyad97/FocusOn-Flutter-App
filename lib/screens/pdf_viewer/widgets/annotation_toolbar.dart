@@ -532,13 +532,19 @@ class StampPalette extends StatelessWidget {
           
           const SizedBox(height: 12),
           
-          // Stamp grid
-          GridView.count(
-            crossAxisCount: 5,
-            shrinkWrap: true,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            children: AppAnnotation.StampType.values.map((stampType) {
+          // Stamp grid - scrollable container
+          Container(
+            constraints: const BoxConstraints(
+              maxHeight: 300, // Limit height to enable scrolling
+              maxWidth: 300,  // Limit width
+            ),
+            child: GridView.count(
+              crossAxisCount: 5,
+              shrinkWrap: true,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 0.8, // Make cells slightly taller for text
+              children: AppAnnotation.StampType.values.map((stampType) {
               return InkWell(
                 onTap: () {
                   HapticFeedback.selectionClick();
@@ -575,6 +581,7 @@ class StampPalette extends StatelessWidget {
               );
             }).toList(),
           ),
+          ),
         ],
       ),
     );
@@ -598,6 +605,42 @@ class StampPalette extends StatelessWidget {
         return Icons.keyboard_arrow_up;
       case AppAnnotation.StampType.rehearsalLetter:
         return Icons.font_download;
+      case AppAnnotation.StampType.quarterNote:
+        return Icons.music_note;
+      case AppAnnotation.StampType.eighthNote:
+        return Icons.music_note;
+      case AppAnnotation.StampType.sixteenthNote:
+        return Icons.music_note;
+      case AppAnnotation.StampType.musicSymbol:
+        return Icons.library_music;
+      case AppAnnotation.StampType.sharp:
+        return Icons.tag;
+      case AppAnnotation.StampType.flat:
+        return Icons.tag;
+      case AppAnnotation.StampType.natural:
+        return Icons.tag;
+      case AppAnnotation.StampType.trebleClef:
+        return Icons.piano;
+      case AppAnnotation.StampType.bassClef:
+        return Icons.piano;
+      case AppAnnotation.StampType.fortissimo:
+        return Icons.volume_up;
+      case AppAnnotation.StampType.pianissimo:
+        return Icons.volume_down;
+      case AppAnnotation.StampType.crescendo:
+        return Icons.trending_up;
+      case AppAnnotation.StampType.diminuendo:
+        return Icons.trending_down;
+      case AppAnnotation.StampType.fermata:
+        return Icons.pause_circle;
+      case AppAnnotation.StampType.staccato:
+        return Icons.fiber_manual_record;
+      case AppAnnotation.StampType.legato:
+        return Icons.linear_scale;
+      case AppAnnotation.StampType.trill:
+        return Icons.waves;
+      case AppAnnotation.StampType.mordent:
+        return Icons.change_history;
     }
   }
 
@@ -613,6 +656,24 @@ class StampPalette extends StatelessWidget {
       case AppAnnotation.StampType.bowingDown: return 'Down';
       case AppAnnotation.StampType.accent: return 'Accent';
       case AppAnnotation.StampType.rehearsalLetter: return 'Letter';
+      case AppAnnotation.StampType.quarterNote: return '♩';
+      case AppAnnotation.StampType.eighthNote: return '♪';
+      case AppAnnotation.StampType.sixteenthNote: return '♬';
+      case AppAnnotation.StampType.musicSymbol: return '♫';
+      case AppAnnotation.StampType.sharp: return '♯';
+      case AppAnnotation.StampType.flat: return '♭';
+      case AppAnnotation.StampType.natural: return '♮';
+      case AppAnnotation.StampType.trebleClef: return '𝄞';
+      case AppAnnotation.StampType.bassClef: return '𝄢';
+      case AppAnnotation.StampType.fortissimo: return 'ff';
+      case AppAnnotation.StampType.pianissimo: return 'pp';
+      case AppAnnotation.StampType.crescendo: return '<';
+      case AppAnnotation.StampType.diminuendo: return '>';
+      case AppAnnotation.StampType.fermata: return '𝄐';
+      case AppAnnotation.StampType.staccato: return '•';
+      case AppAnnotation.StampType.legato: return '⌐';
+      case AppAnnotation.StampType.trill: return 'tr';
+      case AppAnnotation.StampType.mordent: return '⏇';
     }
   }
 }

@@ -224,18 +224,28 @@ class _AnnotationToolbarState extends State<AnnotationToolbar> {
         color: Colors.black.withOpacity(0.7),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'Stamps:',
             style: TextStyle(color: Colors.white, fontSize: 12),
           ),
-          const SizedBox(width: 8),
-          ...AppAnnotation.StampType.values.map((stamp) => 
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: _buildStampButton(stamp),
+          const SizedBox(height: 4),
+          // Compact scrollable stamp container
+          Container(
+            height: 60, // Reduced height to be more compact
+            width: 250, // Reduced width
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: Wrap(
+                spacing: 2, // Reduced spacing
+                runSpacing: 2, // Reduced spacing
+                children: AppAnnotation.StampType.values.map((stamp) => 
+                  _buildCompactStampButton(stamp),
+                ).toList(),
+              ),
             ),
           ),
         ],
@@ -376,6 +386,39 @@ class _AnnotationToolbarState extends State<AnnotationToolbar> {
     );
   }
 
+  Widget _buildCompactStampButton(AppAnnotation.StampType stamp) {
+    final isSelected = widget.selectedStamp == stamp;
+    
+    return Tooltip(
+      message: stamp.name,
+      child: GestureDetector(
+        onTap: () => widget.onStampSelected(stamp),
+        child: Container(
+          width: 24, // Smaller width
+          height: 24, // Smaller height
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primaryPurple.withOpacity(0.3) : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: isSelected ? AppColors.primaryPurple : Colors.white.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              _getStampSymbol(stamp),
+              style: TextStyle(
+                color: isSelected ? AppColors.primaryPurple : Colors.white,
+                fontSize: 10, // Smaller font size
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showTextInputDialog() {
     showDialog(
       context: context,
@@ -457,6 +500,43 @@ class _AnnotationToolbarState extends State<AnnotationToolbar> {
         return '>';
       case AppAnnotation.StampType.rehearsalLetter:
         return 'A';
+      // Music note symbols
+      case AppAnnotation.StampType.quarterNote:
+        return '♩';
+      case AppAnnotation.StampType.eighthNote:
+        return '♪';
+      case AppAnnotation.StampType.sixteenthNote:
+        return '♬';
+      case AppAnnotation.StampType.musicSymbol:
+        return '♫';
+      case AppAnnotation.StampType.sharp:
+        return '♯';
+      case AppAnnotation.StampType.flat:
+        return '♭';
+      case AppAnnotation.StampType.natural:
+        return '♮';
+      case AppAnnotation.StampType.trebleClef:
+        return '𝄞';
+      case AppAnnotation.StampType.bassClef:
+        return '𝄢';
+      case AppAnnotation.StampType.fortissimo:
+        return 'ff';
+      case AppAnnotation.StampType.pianissimo:
+        return 'pp';
+      case AppAnnotation.StampType.crescendo:
+        return '<';
+      case AppAnnotation.StampType.diminuendo:
+        return '>';
+      case AppAnnotation.StampType.fermata:
+        return '𝄐';
+      case AppAnnotation.StampType.staccato:
+        return '•';
+      case AppAnnotation.StampType.legato:
+        return '⌐';
+      case AppAnnotation.StampType.trill:
+        return 'tr';
+      case AppAnnotation.StampType.mordent:
+        return '⏇';
     }
   }
 }

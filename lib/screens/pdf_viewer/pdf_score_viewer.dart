@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -77,6 +78,10 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   List<Offset> _currentDrawingPoints = [];
   bool _isDrawing = false;
   AppAnnotation.StampType? _selectedStamp;
+  bool _hasShownStampTutorial = false;
+  
+  // Page change debouncing for smooth scrolling
+  Timer? _pageChangeTimer;
 
   @override
   void initState() {
@@ -105,6 +110,8 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   void dispose() {
     // Stop Bluetooth pedal listening
     _stopBluetoothPedal();
+    // Clean up page change timer
+    _pageChangeTimer?.cancel();
     _pdfController.dispose();
     super.dispose();
   }
@@ -116,6 +123,12 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
       _currentDrawingPoints.clear();
       _isDrawing = false;
     });
+    
+    // Show stamp tutorial when user first selects stamp tool
+    if (tool == AppAnnotation.AnnotationTool.stamp && !_hasShownStampTutorial) {
+      _showStampTutorial();
+      _hasShownStampTutorial = true;
+    }
   }
 
   void _onColorChanged(AppAnnotation.ColorTag color) {
@@ -916,6 +929,12 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
       return;
     }
     
+    // Handle stamp tool - immediate placement for fluid UX
+    if (_currentTool == AppAnnotation.AnnotationTool.stamp) {
+      _placeStampAt(details.localPosition);
+      return;
+    }
+    
     if (_currentTool == AppAnnotation.AnnotationTool.eraser) {
       // Eraser mode - find and remove annotations at this position
       _eraseAnnotationsAt(_transformScreenToPdfCoordinates(details.localPosition));
@@ -936,10 +955,14 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
       // Continue erasing
       _eraseAnnotationsAt(_transformScreenToPdfCoordinates(details.localPosition));
     } else if (_isDrawing) {
-      // Continue drawing
-      setState(() {
-        _currentDrawingPoints.add(_transformScreenToPdfCoordinates(details.localPosition));
-      });
+      // Continue drawing with optimized state update
+      final newPoint = _transformScreenToPdfCoordinates(details.localPosition);
+      _currentDrawingPoints.add(newPoint);
+      
+      // Only trigger rebuild every 3rd point for smoother performance
+      if (_currentDrawingPoints.length % 3 == 0) {
+        setState(() {});
+      }
     }
   }
 
@@ -955,7 +978,19 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
       // Text tool is handled differently, no drawing needed
       return;
     }
-    
+
+    if (_isDrawing && _currentDrawingPoints.isNotEmpty) {
+      // Ensure final state is updated for smooth completion
+      setState(() {
+        _isDrawing = false;
+      });
+      
+      // Complete the annotation
+      _completeAnnotation();
+    }
+  }
+
+  void _completeAnnotation() {
     if (!_isDrawing) return;
     
     if (_currentDrawingPoints.isNotEmpty) {
@@ -1093,6 +1128,38 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     }
   }
 
+  void _placeStampAt(Offset localPosition) {
+    // Immediate stamp placement for fluid UX
+    final pdfPosition = _transformScreenToPdfCoordinates(localPosition);
+    
+    // Create stamp annotation immediately
+    final annotation = AppAnnotation.Annotation(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      pieceId: widget.piece.id,
+      page: _currentPage,
+      layerId: _selectedLayerId,
+      colorTag: _currentColor,
+      tool: AppAnnotation.AnnotationTool.stamp,
+      data: AppAnnotation.StampData(
+        type: _selectedStamp ?? AppAnnotation.StampType.fingering1,
+        position: pdfPosition,
+        size: 24.0,
+        color: _getColorFromTag(_currentColor),
+      ),
+      createdAt: DateTime.now(),
+    );
+
+    setState(() {
+      _annotations.add(annotation);
+    });
+
+    // Save to database in background
+    _saveAnnotationToDatabase(annotation);
+
+    // Haptic feedback for tactile confirmation
+    HapticFeedback.lightImpact();
+  }
+
   Future<void> _saveAnnotationToDatabase(AppAnnotation.Annotation annotation) async {
     try {
       final annotationService = ref.read(annotationServiceProvider);
@@ -1101,6 +1168,86 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     } catch (e) {
       print('PDFScoreViewer: Error saving annotation to database: $e');
     }
+  }
+
+  void _showStampTutorial() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.help_outline, color: Theme.of(context).primaryColor),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'How to Use Stamps',
+                style: TextStyle(fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Follow these 3 simple steps:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            _buildStepItem('1', 'Select your stamp type from the toolbar'),
+            _buildStepItem('2', 'Tap anywhere on the score where you want to place it'),
+            _buildStepItem('3', 'The stamp will appear instantly at that position'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lightbulb_outline, color: Theme.of(context).primaryColor),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Tip: Stamps are perfect for fingering numbers, bowings, and quick markings!',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Got it!'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepItem(String number, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 12,
+            backgroundColor: Theme.of(context).primaryColor,
+            child: Text(
+              number,
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
   }
 
   Color _getColorFromTag(AppAnnotation.ColorTag tag) {
@@ -1147,10 +1294,19 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
   }
 
   void _onPageChanged(PdfPageChangedDetails details) {
-    setState(() {
-      _currentPage = details.newPageNumber;
+    // Immediate UI update for smooth visual feedback
+    _currentPage = details.newPageNumber;
+    
+    // Debounce heavy operations to prevent lag during rapid swiping
+    _pageChangeTimer?.cancel();
+    _pageChangeTimer = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        setState(() {
+          // Update any heavy UI components here if needed
+        });
+        // TODO: Save page to database (debounced to avoid excessive writes)
+      }
     });
-    // TODO: Save page to database
   }
 
   void _onSpotTap(dynamic details, Size size) {
@@ -1299,19 +1455,27 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     final screenSize = MediaQuery.of(context).size;
     final tapPosition = details.globalPosition;
     
-    // Define corner areas (20% of screen width from each edge)
+    // Define corner areas (20% of screen width from each edge, 30% of height from top/bottom)
     final cornerWidth = screenSize.width * 0.2;
+    final cornerHeight = screenSize.height * 0.3;
     final isLeftCorner = tapPosition.dx < cornerWidth;
     final isRightCorner = tapPosition.dx > (screenSize.width - cornerWidth);
+    final isTopCorner = tapPosition.dy < cornerHeight;
+    final isBottomCorner = tapPosition.dy > (screenSize.height - cornerHeight);
     
-    if (isLeftCorner) {
-      // Left corner - previous page
-      _previousPage();
-    } else if (isRightCorner) {
-      // Right corner - next page
-      _nextPage();
+    // Enable tapping in both top and bottom corners
+    final isInCornerArea = (isLeftCorner || isRightCorner) && (isTopCorner || isBottomCorner);
+    
+    if (isInCornerArea) {
+      if (isLeftCorner) {
+        // Left corner - previous page
+        _previousPage();
+      } else if (isRightCorner) {
+        // Right corner - next page
+        _nextPage();
+      }
     }
-    // Middle area does nothing (preserves existing behavior)
+    // Middle area and non-corner areas do nothing (preserves existing behavior)
   }
 
   void _previousPage() {
@@ -1731,7 +1895,7 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
     
     // Check if we have a valid file path
     if (pdfPath != null && pdfPath.isNotEmpty && !pdfPath.startsWith('assets/')) {
-      // For actual file imports - optimized for performance
+      // For actual file imports - optimized for live concert performance
       return SfPdfViewer.file(
         File(pdfPath),
         controller: _pdfController,
@@ -1748,11 +1912,13 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
         pageSpacing: 0, // No spacing for smooth scrolling
         enableDocumentLinkAnnotation: false,
         interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan,
-        // Performance optimizations
+        // Performance optimizations for live concert use
         canShowPaginationDialog: false,
         enableHyperlinkNavigation: false,
         canShowPasswordDialog: false,
         initialScrollOffset: Offset.zero,
+        // Enable hardware acceleration for smoother scrolling
+        key: ValueKey('pdf_viewer_${_currentPage}'),
       );
     } else {
       // For demo/asset files
@@ -1772,11 +1938,13 @@ class _PDFScoreViewerState extends ConsumerState<PDFScoreViewer> {
         pageSpacing: 0, // No spacing for smooth scrolling
         enableDocumentLinkAnnotation: false,
         interactionMode: _isSpotMode ? PdfInteractionMode.selection : PdfInteractionMode.pan,
-        // Performance optimizations
+        // Performance optimizations for live concert use
         canShowPaginationDialog: false,
         enableHyperlinkNavigation: false,
         canShowPasswordDialog: false,
         initialScrollOffset: Offset.zero,
+        // Enable hardware acceleration for smoother scrolling
+        key: ValueKey('pdf_viewer_asset_${_currentPage}'),
       );
     }
   }
@@ -2452,6 +2620,42 @@ class AnnotationOverlayPainter extends CustomPainter {
         return '>';
       case AppAnnotation.StampType.rehearsalLetter:
         return 'A';
+      case AppAnnotation.StampType.quarterNote:
+        return '♩';
+      case AppAnnotation.StampType.eighthNote:
+        return '♪';
+      case AppAnnotation.StampType.sixteenthNote:
+        return '♬';
+      case AppAnnotation.StampType.musicSymbol:
+        return '♫';
+      case AppAnnotation.StampType.sharp:
+        return '♯';
+      case AppAnnotation.StampType.flat:
+        return '♭';
+      case AppAnnotation.StampType.natural:
+        return '♮';
+      case AppAnnotation.StampType.trebleClef:
+        return '𝄞';
+      case AppAnnotation.StampType.bassClef:
+        return '𝄢';
+      case AppAnnotation.StampType.fortissimo:
+        return 'ff';
+      case AppAnnotation.StampType.pianissimo:
+        return 'pp';
+      case AppAnnotation.StampType.crescendo:
+        return '<';
+      case AppAnnotation.StampType.diminuendo:
+        return '>';
+      case AppAnnotation.StampType.fermata:
+        return '𝄐';
+      case AppAnnotation.StampType.staccato:
+        return '•';
+      case AppAnnotation.StampType.legato:
+        return '⌐';
+      case AppAnnotation.StampType.trill:
+        return 'tr';
+      case AppAnnotation.StampType.mordent:
+        return '⏇';
     }
   }
 

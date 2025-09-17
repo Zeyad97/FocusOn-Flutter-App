@@ -30,6 +30,26 @@ enum StampType {
   bowingDown,
   accent,
   rehearsalLetter,
+  // Music note symbols
+  quarterNote,      // ♩
+  eighthNote,       // ♪  
+  sixteenthNote,    // ♬
+  musicSymbol,      // ♫
+  sharp,            // ♯
+  flat,             // ♭
+  natural,          // ♮
+  trebleClef,       // 𝄞
+  // Additional famous musical symbols
+  bassClef,         // 𝄢
+  fortissimo,       // ff
+  pianissimo,       // pp
+  crescendo,        // <
+  diminuendo,       // >
+  fermata,          // 𝄐
+  staccato,         // •
+  legato,           // ⌐
+  trill,            // tr
+  mordent,          // ⏇
 }
 
 /// Vector path data for drawing annotations with advanced properties
@@ -269,6 +289,24 @@ class Annotation {
       case 'bowingDown': return StampType.bowingDown;
       case 'accent': return StampType.accent;
       case 'rehearsalLetter': return StampType.rehearsalLetter;
+      case 'quarterNote': return StampType.quarterNote;
+      case 'eighthNote': return StampType.eighthNote;
+      case 'sixteenthNote': return StampType.sixteenthNote;
+      case 'musicSymbol': return StampType.musicSymbol;
+      case 'sharp': return StampType.sharp;
+      case 'flat': return StampType.flat;
+      case 'natural': return StampType.natural;
+      case 'trebleClef': return StampType.trebleClef;
+      case 'bassClef': return StampType.bassClef;
+      case 'fortissimo': return StampType.fortissimo;
+      case 'pianissimo': return StampType.pianissimo;
+      case 'crescendo': return StampType.crescendo;
+      case 'diminuendo': return StampType.diminuendo;
+      case 'fermata': return StampType.fermata;
+      case 'staccato': return StampType.staccato;
+      case 'legato': return StampType.legato;
+      case 'trill': return StampType.trill;
+      case 'mordent': return StampType.mordent;
       default: return StampType.fingering1;
     }
   }
