@@ -1,34 +1,104 @@
+// ==========================================
+// LIBRARY_SCREEN.DART - MAIN MUSIC LIBRARY INTERFACE
+// ==========================================
+// This file contains the main library screen where users can view, search, sort,
+// and manage their collection of PDF sheet music. It provides the primary interface
+// for importing new pieces, organizing existing ones, and navigating to the PDF viewer.
+
+// Core Flutter framework for UI components and material design
 import 'package:flutter/material.dart';
+
+// Riverpod state management for reactive UI and data management
+// ConsumerStatefulWidget and ConsumerState enable state and provider integration
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+// Custom app theme definitions for consistent styling
 import '../theme/app_theme.dart';
+
+// PDF import and management service for handling file operations
 import '../services/pdf_score_service.dart';
+
+// Data model for musical pieces with metadata
 import '../models/piece.dart';
+
+// Custom animation utilities for smooth transitions and micro-interactions
 import '../utils/animations.dart';
+
+// Haptic feedback and user interaction feedback system
 import '../utils/feedback_system.dart';
+
+// Enhanced UI components with custom styling and animations
 import '../widgets/enhanced_components.dart';
+
+// Unified library provider for centralized piece and library state management
 import '../providers/unified_library_provider.dart';
+
+// Practice provider for tracking practice sessions and progress
 import '../providers/practice_provider.dart';
+
+// PDF viewer screen for displaying and annotating sheet music
 import 'pdf_viewer/pdf_score_viewer.dart';
+
+// Settings screen for app configuration and preferences
 import 'settings/settings_screen.dart';
 
-// Music piece model
+// ==========================================
+// MUSIC PIECE MODEL CLASS
+// ==========================================
+// This class represents a single piece of sheet music in the library.
+// It contains all metadata needed for display, organization, and practice tracking.
+// This is a UI-focused model separate from the database Piece model.
 class MusicPiece {
+  // Unique identifier for the piece, used for database operations and references
   final String id;
+  
+  // Display name of the musical piece (e.g., "Moonlight Sonata")
   final String title;
+  
+  // Name of the composer or arranger (e.g., "Ludwig van Beethoven")
   final String composer;
+  
+  // Genre or category classification (e.g., "Classical", "Jazz", "Folk")
   final String category;
+  
+  // Timestamp when the piece was added to the library
   final DateTime dateAdded;
+  
+  // Total number of pages in the PDF document
   final int pages;
+  
+  // Practice completion percentage (0.0 to 1.0)
+  // Calculated based on completed practice spots and time spent
   final double practiceProgress;
+  
+  // Difficulty level indicator (e.g., "Beginner", "Intermediate", "Advanced")
   final String difficulty;
+  
+  // Color associated with the category for visual organization
   final Color categoryColor;
+  
+  // Whether the user has marked this piece as a favorite
   final bool isFavorite;
-  final String? duration; // New field for duration
-  final String? key; // New field for musical key
-  final int spotsCount; // New field for spots count
-  final List<Color> spotColors; // New field for actual spot colors
-  final Map<Color, int> spotColorCounts; // New field for spot color counts
+  
+  // Optional estimated performance duration (e.g., "3:45", "12 minutes")
+  final String? duration;
+  
+  // Optional musical key signature (e.g., "C major", "F# minor")
+  final String? key;
+  
+  // Total number of practice spots created on this piece
+  final int spotsCount;
+  
+  // List of colors representing active practice spots
+  // Used for visual indicators of spot difficulty and status
+  final List<Color> spotColors;
+  
+  // Map counting spots by color for statistical display
+  // Example: {Colors.red: 3, Colors.yellow: 5, Colors.green: 2}
+  final Map<Color, int> spotColorCounts;
 
+  // Constructor for creating a MusicPiece instance
+  // Most fields are required, with sensible defaults for optional metadata
   MusicPiece({
     required this.id,
     required this.title,
@@ -39,33 +109,61 @@ class MusicPiece {
     required this.practiceProgress,
     required this.difficulty,
     required this.categoryColor,
-    this.isFavorite = false,
-    this.duration,
-    this.key,
-    this.spotsCount = 0,
-    this.spotColors = const [],
-    this.spotColorCounts = const {},
+    this.isFavorite = false,      // Default to not favorite
+    this.duration,                // Optional duration
+    this.key,                     // Optional musical key
+    this.spotsCount = 0,          // Default to no spots
+    this.spotColors = const [],   // Default to empty spot colors
+    this.spotColorCounts = const {}, // Default to empty color counts
   });
 }
 
-// Library provider
+// ==========================================
+// LIBRARY PROVIDER - STATE MANAGEMENT FOR MUSIC PIECES
+// ==========================================
+// This provider manages the list of MusicPiece objects for the library UI.
+// It provides reactive state management using Riverpod's StateNotifierProvider.
+// The LibraryNotifier handles CRUD operations and state updates for the library.
 final libraryProvider = StateNotifierProvider<LibraryNotifier, List<MusicPiece>>((ref) {
+  // Create and return a new LibraryNotifier instance
+  // The provider will automatically manage the lifecycle and state updates
   return LibraryNotifier();
 });
 
-// Pieces provider to store actual Piece objects with PDF paths
+// ==========================================
+// PIECES PROVIDER - DATABASE PIECE STORAGE
+// ==========================================
+// This provider stores the actual Piece objects with file paths and database data.
+// It maintains a Map for quick lookups by piece ID and handles the relationship
+// between UI MusicPiece objects and database Piece objects.
 final piecesProvider = StateNotifierProvider<PiecesNotifier, Map<String, Piece>>((ref) {
+  // Create and return a new PiecesNotifier instance
+  // The Map uses piece ID as key for O(1) lookup performance
   return PiecesNotifier();
 });
 
+// ==========================================
+// PIECES NOTIFIER - MANAGES DATABASE PIECE OBJECTS
+// ==========================================
+// Handles storage and retrieval of Piece objects that contain file paths
+// and database metadata. This is separate from the UI-focused MusicPiece objects.
 class PiecesNotifier extends StateNotifier<Map<String, Piece>> {
+  // Initialize with empty Map - pieces are loaded as needed
   PiecesNotifier() : super({});
 
+  // Add a new piece to the storage Map
+  // @param piece: The Piece object to store, containing file path and metadata
   void addPiece(Piece piece) {
+    // Create new state with the added piece using spread operator
+    // This ensures immutability and triggers UI updates via Riverpod
     state = {...state, piece.id: piece};
   }
 
+  // Retrieve a specific piece by its unique identifier
+  // @param id: The unique ID of the piece to retrieve
+  // @return: The Piece object if found, null otherwise
   Piece? getPiece(String id) {
+    // Direct Map lookup - O(1) performance for piece retrieval
     return state[id];
   }
 }

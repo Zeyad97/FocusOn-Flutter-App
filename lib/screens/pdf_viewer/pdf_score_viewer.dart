@@ -1,52 +1,117 @@
-import 'dart:io';
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import '../../models/piece.dart';
-import '../../models/spot.dart';
-import '../../models/annotation.dart' as AppAnnotation;
-import '../../theme/app_theme.dart';
-import '../../services/spot_service.dart';
-import '../../services/annotation_service.dart';
-import '../../services/piece_service.dart';
-import '../../services/bluetooth_pedal_service.dart';
-import '../../providers/unified_library_provider.dart';
-import 'widgets/pdf_toolbar.dart';
-import 'widgets/spot_overlay.dart';
-import 'widgets/annotation_toolbar.dart';
-import 'widgets/annotation_toolbar_new.dart' as NewToolbar;
-import 'widgets/metronome_widget.dart';
-import 'widgets/pdf_zoom_controls.dart';
-import '../../../widgets/layer_panel.dart';
-import '../../../widgets/annotation_filter_panel.dart';
+// ==========================================
+// PDF_SCORE_VIEWER.DART - ADVANCED PDF ANNOTATION AND VIEWING SYSTEM
+// ==========================================
+// This file contains the main PDF viewing interface for sheet music with
+// comprehensive annotation tools, practice spot management, and performance features.
+// It uses Syncfusion PDF Viewer for high-performance rendering and supports
+// multi-layer annotations, practice tracking, and professional music features.
 
-/// PDF viewing modes for different reading experiences
+// Core Dart libraries for file operations and asynchronous programming
+import 'dart:io';        // File system access for PDF file operations
+import 'dart:async';     // Future, Stream, and async/await functionality
+
+// Flutter framework components
+import 'package:flutter/material.dart';    // Material Design widgets and theming
+import 'package:flutter/services.dart';    // System services, haptic feedback, platform channels
+
+// State management with Riverpod for reactive UI updates
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+// High-performance PDF rendering engine with annotation support
+// Syncfusion provides professional-grade PDF viewing with smooth scrolling,
+// zoom capabilities, and annotation overlay support
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+
+// Data models for the application's core entities
+import '../../models/piece.dart';           // Musical piece metadata and file info
+import '../../models/spot.dart';            // Practice spot data and positioning
+import '../../models/annotation.dart' as AppAnnotation;  // Annotation layers and drawing data
+
+// App theming and visual consistency
+import '../../theme/app_theme.dart';
+
+// Core services for data persistence and business logic
+import '../../services/spot_service.dart';              // Practice spot CRUD operations
+import '../../services/annotation_service.dart';        // Annotation persistence and management
+import '../../services/piece_service.dart';             // Piece metadata and progress tracking
+import '../../services/bluetooth_pedal_service.dart';   // Bluetooth page-turning integration
+
+// State management providers
+import '../../providers/unified_library_provider.dart'; // Centralized library state
+
+// Specialized UI components for PDF viewing
+import 'widgets/pdf_toolbar.dart';              // Top toolbar with PDF controls
+import 'widgets/spot_overlay.dart';             // Practice spot visualization and interaction
+import 'widgets/annotation_toolbar.dart';       // Legacy annotation tool selection
+import 'widgets/annotation_toolbar_new.dart' as NewToolbar;  // Modern annotation interface
+import 'widgets/metronome_widget.dart';         // Integrated metronome for practice
+import 'widgets/pdf_zoom_controls.dart';        // Zoom and navigation controls
+
+// Advanced annotation features
+import '../../../widgets/layer_panel.dart';            // Annotation layer management
+import '../../../widgets/annotation_filter_panel.dart'; // Annotation filtering and organization
+
+// ==========================================
+// VIEW MODE ENUMERATION
+// ==========================================
+// Defines different PDF viewing modes to optimize reading experience
+// for various use cases and user preferences.
 enum ViewMode {
+  // Traditional single page view - shows one page at a time
+  // Best for detailed annotation work and focused practice
   singlePage('Single Page'),
+  
+  // Two-page spread view - shows facing pages side by side
+  // Ideal for piano music and orchestral scores
   twoPage('Two Page'),
+  
+  // Continuous vertical scrolling - all pages in a column
+  // Best for quick browsing and overview reading
   verticalScroll('Vertical Scroll'),
+  
+  // Grid view - thumbnail overview of multiple pages
+  // Useful for navigation and structure overview
   grid('Grid'),
+  
+  // List view - linear arrangement with page metadata
+  // Good for searching and organized browsing
   list('List');
 
+  // Constructor that associates display name with each enum value
   const ViewMode(this.displayName);
+  
+  // Human-readable name for UI display
   final String displayName;
 }
 
-/// Professional PDF score viewer with zero-lag reading experience
+// ==========================================
+// PDF SCORE VIEWER WIDGET
+// ==========================================
+// Main widget class for professional PDF viewing with comprehensive
+// annotation tools, practice features, and performance optimization.
+// Extends ConsumerStatefulWidget to integrate with Riverpod state management.
 class PDFScoreViewer extends ConsumerStatefulWidget {
+  // The musical piece being viewed - contains metadata and file references
   final Piece piece;
+  
+  // Optional direct path to PDF file - used when piece.filePath might be unavailable
+  // This provides flexibility for different file loading scenarios
   final String? pdfPath;
+  
+  // Optional page number to open initially - useful for resuming reading
+  // or jumping to specific sections based on practice history
   final int? initialPage;
 
+  // Constructor requiring piece data with optional PDF path and initial page
   const PDFScoreViewer({
-    super.key,
-    required this.piece,
-    this.pdfPath,
-    this.initialPage,
+    super.key,           // Widget key for Flutter's element tree optimization
+    required this.piece, // Piece object must be provided for context
+    this.pdfPath,        // Optional override for PDF file location
+    this.initialPage,    // Optional starting page for targeted viewing
   });
 
+  // Creates the mutable state object for this widget
+  // Returns custom state class that manages PDF viewer lifecycle
   @override
   ConsumerState<PDFScoreViewer> createState() => _PDFScoreViewerState();
 }
